@@ -38,6 +38,7 @@ concurrency:
   group: artifacts-publish-${{ github.ref }}-${{ inputs.which }}-${{ inputs.group }}
   cancel-in-progress: false
 
+jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 120
