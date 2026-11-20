@@ -1,0 +1,174 @@
+name: artifacts-publish
+
+# THE PINNED INPUTS THIS REPOSITORY'S STAGES FETCH, MIRRORED INTO ITS OWN PACKAGE.
+#
+# SPLIT OUT OF easydev-org/easyvm, WHICH MIRRORED EVERY OPERATING SYSTEM'S ASSETS INTO ONE PACKAGE.
+# That worked while every stage lived in one repository; it stopped being right the day they did not.
+# A package a repository PUSHES to is the package its own token can write, and an asset layer with one
+# place to look per operating system is one where a wrong tag names the repository that is wrong.
+#
+# WHY MIRROR AT ALL: the vendors serve these at a fraction of ghcr's rate - SourceForge answered
+# BlissOS at 0.5 MB/s on the measurement that produced the pin, and a CI run was cancelled at exactly
+# 1h0m0s with the ISO at 92%. The same bytes from ghcr arrive in about a minute.
+
+on:
+  workflow_dispatch:
+    inputs:
+      group:
+        description: "Which group to publish"
+        type: choice
+        options:
+          - all
+          - windows
+        default: all
+      disks_repository:
+        description: >-
+          The ghcr package the pinned inputs are MIRRORED INTO. Empty means THIS repository, which is
+          what every caller wants: a token can only write to the package its own repository holds.
+        default: ""
+      which:
+        description: "One exact tag, overriding `group`. Empty publishes the whole group."
+        default: ""
+      keep:
+        description: "Keep the downloaded files on the runner"
+        type: boolean
+        default: false
+
+concurrency:
+  group: artifacts-publish-${{ github.ref }}-${{ inputs.which }}-${{ inputs.group }}
+  cancel-in-progress: false
+
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      packages: write
+      checks: write
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact:
+          - { tag: "iso-windows11", group: "windows", url: "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26200.6584.250915-1905.25h2_ge_release_svc_refresh_CLIENT_CONSUMER_x64FRE_en-us.iso", sha: "d141f6030fed50f75e2b03e1eb2e53646c4b21e5386047cb860af5223f102a32", size: "7736125440" }
+          - { tag: "iso-virtio-win", group: "windows", url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso", sha: "", size: "0" }
+    # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
+    #
+    # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty
+    # there and the condition silently reads as false for every row - a run with zero jobs and no log
+    # line. MEASURED, and it is what the repository's own workflow test refuses.
+    #
+    # SELECTION GOES IN THE MATRIX INSTEAD, which IS evaluated per row. The generator that wrote this
+    # file reads the catalogue and the three inputs, so a re-run of one artifact is:
+    #
+    #	gh workflow run artifacts-publish.yml -f tag=iso-windows11
+    #
+    # and the matrix then holds one row. The cost is that the row list is written out at generation
+    # time rather than computed at run time - which a catalogue in a heredoc was already doing.
+    steps:
+      - uses: actions/checkout@v4
+
+      # A ROW THAT WAS NOT ASKED FOR EXITS BEFORE IT DOWNLOADS ANYTHING.
+      #
+      # THE COMMENT ABOVE THIS JOB USED TO SAY A RE-RUN OF ONE ARTIFACT WAS `-f which=iso-windows11`
+      # "because the matrix then holds one row". IT DID NOT: the matrix is a literal list written
+      # into this file, nothing reads `which` or `group`, and `-f which=iso-freebsd` started
+      # SEVENTEEN DOWNLOADS AND FIFTY-ONE GIBABYTES - measured on run 44298764450, cancelled after
+      # the jobs came up. A selection input that is declared and never read is worse than none: it
+      # reads like a filter and behaves like "everything".
+      #
+      # THE GUARD IS A STEP RATHER THAN A JOB `if:` FOR THE REASON THE COMMENT BELOW ALREADY GIVES:
+      # GitHub evaluates a job's `if:` BEFORE the matrix is expanded, so `matrix.artifact.tag` is
+      # empty there and every row would read as false.
+      - name: is this row wanted
+        id: wanted
+        env:
+          WHICH: ${{ inputs.which }}
+          GROUP_INPUT: ${{ inputs.group }}
+          ROW_TAG: ${{ matrix.artifact.tag }}
+          ROW_GROUP: ${{ matrix.artifact.group }}
+        run: |
+          set -eu
+          if [ -n "${WHICH:-}" ]; then
+            if [ "$ROW_TAG" = "$WHICH" ]; then
+              echo "wanted=yes" >> "$GITHUB_OUTPUT"
+            else
+              echo "wanted=no" >> "$GITHUB_OUTPUT"
+              echo "skipped: asked for $WHICH, this row is $ROW_TAG"
+            fi
+            exit 0
+          fi
+          if [ "${GROUP_INPUT:-all}" = "all" ] || [ "$ROW_GROUP" = "$GROUP_INPUT" ]; then
+            echo "wanted=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "wanted=no" >> "$GITHUB_OUTPUT"
+            echo "skipped: asked for group $GROUP_INPUT, this row is $ROW_GROUP"
+          fi
+
+      - name: prepare the runner
+        if: steps.wanted.outputs.wanted == 'yes'
+        # THE DISK IS THE POINT: the largest single input is 7.7 GiB and its hash pass reads it again,
+        # so a runner with a 14 GiB volume fails halfway through the Windows image.
+        uses: easydev-org/easyactions/runner-check@main
+        with:
+          kvm: false
+          disk-gb: '25'
+          token: ${{ github.token }}
+
+      - name: download and verify
+        if: steps.wanted.outputs.wanted == 'yes'
+        # THE PER-ARTIFACT RULE LIVES IN ONE SCRIPT, because it is fifteen comments long and a matrix
+        # row should be readable. It downloads, checks the pin by ITS OWN LENGTH, and fails with the
+        # numbers when they differ.
+        id: fetch
+        env:
+          GROUP: ${{ matrix.artifact.group }}
+          # EMPTY HERE IS NOT "NO OPINION": `internal/asset` falls back to `easydev-org/easyvm` when
+          # this is unset, which is the product's package and not writable with this token. So the
+          # default is spelled out as this repository rather than left to the fallback.
+          DISKS_REPOSITORY: ${{ inputs.disks_repository || github.repository }}
+        run: |
+          set -eu
+          path=$(sh scripts/mirror-one.sh \
+                   "${{ matrix.artifact.tag }}" \
+                   "${{ matrix.artifact.url }}" \
+                   "${{ matrix.artifact.sha }}" \
+                   "${{ matrix.artifact.size }}")
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+
+      - name: push
+        if: steps.wanted.outputs.wanted == 'yes'
+        # THE TRANSFER IS THE ACTION THAT KNOWS THE REGISTRY: it installs oras idempotently, logs in
+        # explicitly, and refuses a push whose bytes are identical to an earlier artifact.
+        uses: easydev-org/easyactions/oci-push@main
+        with:
+          path: ${{ steps.fetch.outputs.path }}
+          tag: ${{ matrix.artifact.tag }}
+          repository: ${{ inputs.disks_repository || github.repository }}
+          media-type: application/vnd.easydev.artifact
+          token: ${{ github.token }}
+          check-name: mirror-${{ matrix.artifact.tag }}
+
+  # APPLE'S RECOVERY IMAGE IS THE ONE INPUT THAT CANNOT BE A CATALOGUE ROW.
+  #
+  # Every other upstream here is one HTTP GET. This one is a session cookie, a five-field POST with
+  # opaque nonces, a token exchange, and then a CDN download that has to be parallel or it is cut
+  # short - Apple does not serve it as one request:
+  #
+  #	curl: (18) end of response with 887566699 bytes missing
+  #
+  # and every request produces a DIFFERENT URL AND TOKEN, so there is nothing stable to pin.
+  #
+  # SO IT IS A TRANSFER BETWEEN TWO PACKAGES RATHER THAN A DOWNLOAD: the file is the same bytes, one
+  # copy is already published under `macos-recovery-<name>`, and this mirrors it into THIS
+  # repository's package so the asset layer has one place to look. A pull and a push, both through the
+  # organisation's actions.
+  #
+  # ONE ROW PER macOS RELEASE, AND `tahoe` WAS MISSING FROM THIS JOB. `internal/asset` has resolved
+  # release 26 to the tag `macos-recovery-tahoe` since that table was written, and the publisher had
+  # only ever mirrored `sequoia` - so the image a 26 stage requires was in `easydiskbake` and in no
+  # repository this build reads. The failure mode of the omission is the one this project keeps
+  # paying for: a 404 in somebody's first step, naming a tag that looks like a typo.
+  #
+  # THE SOURCE IS THE PUBLISHER'S OWN PACKAGE for both rows. `sequoia` was mirrored from THIS
+  # repository before (it had been copied here once by hand); pulling both from `easydiskbake` makes
+  # the two rows the same shape and leaves one origin for every Apple image.
