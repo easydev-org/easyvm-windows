@@ -16,7 +16,7 @@ walkthrough "windows 11 - install to a desktop"
     disk_gb == 128
   step "build the answer CD"
     fetch == answer_iso
-    template == windows/11/answer/Autounattend.xml
+    template == 11/answer/Autounattend.xml
   step "boot the installer"
     answer_cd == answer.iso
     boot == true
