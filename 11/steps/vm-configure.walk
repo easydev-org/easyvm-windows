@@ -108,8 +108,24 @@ walkthrough "windows 11 - configure the vm (share, logon hook)"
   # SO THE DEVICE IS NOW AN ASSERTION: exit 1 when the port is absent, or when any matching device
   # is not `OK`. The vioser driver is installed a few steps above, and if the device has not bound
   # to the virtio-serial port the agent cannot answer - which is the fact this step exists to state.
+  # THE QUESTION IS WHETHER THE HOST CAN REACH THE AGENT, SO THE HOST ASKS IT.
+  #
+  # MEASURED ON RUNS 44893899545 AND 44896827596, the second one AFTER a restart: `service: Running
+  # / Automatic` and `device: NO virtio-serial port`, even though qemu's command line carries
+  # `-device virtio-serial -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0` and the
+  # driver package installed onto `PCI\VEN_1AF4&DEV_1003` with `PNPUTIL_EXIT=0`.
+  #
+  # `Get-PnpDevice -Class Ports` IS THE WRONG INSTRUMENT. It reads one Windows class, through one
+  # cmdlet, and its answer depends on whether the vioser driver happened to create a COM node in
+  # that class - not on whether the agent is answering. A check that can be wrong in the direction
+  # of a FALSE FAILURE is as bad as the one that only printed, because both send the next person to
+  # the wrong file.
+  #
+  # `qga: ping` IS THE THING ITSELF: it opens the qga socket qemu is listening on and asks the agent
+  # inside the guest to answer. If it replies, the channel exists end to end - driver bound, port
+  # present, service up - and if it does not, the failure names the agent rather than a device class.
   step "prove the guest agent answers"
-    ssh == "powershell -NoProfile -Command \"$s = Get-Service QEMU-GA -ErrorAction SilentlyContinue; if ($s) { Write-Output ('service: ' + $s.Status + ' / ' + $s.StartType) } else { Write-Output 'service: ABSENT'; exit 1 }; $d = Get-PnpDevice -Class Ports -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'Guest Agent|virtio' }; if (-not $d) { Write-Output 'device: NO virtio-serial port'; exit 1 }; $bad = 0; $d | ForEach-Object { Write-Output ('device: ' + $_.FriendlyName + ' / ' + $_.Status); if ($_.Status -ne 'OK') { $bad = 1 } }; if ($bad) { exit 1 }\"\n"
+    qga == ping
     timeout == 120
   step "set the computer's name"
     ssh == powershell -NoProfile -Command "Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED"
