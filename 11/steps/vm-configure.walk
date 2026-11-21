@@ -62,6 +62,35 @@ walkthrough "windows 11 - configure the vm (share, logon hook)"
   step "install the guest agent"
     ssh == "cmd /c \"msiexec /i C:\\Users\\{{ user }}\\qemu-ga-x86_64.msi /qn /norestart /l*v C:\\Users\\{{ user }}\\qemu-ga-install.log & echo MSIEXEC_EXIT=%ERRORLEVEL%\"\n"
     timeout == 600
+  # THE DRIVER IS IN THE STORE AND THE PORT DOES NOT EXIST UNTIL WINDOWS RESTARTS.
+  #
+  # MEASURED ON RUN 44893899545, WITH EVERY COMMAND SUCCEEDING:
+  #
+  #	Driver package installed on device: PCI\VEN_1AF4&DEV_1003&SUBSYS_00031AF4&REV_00\3&11583659&0&08
+  #	PNPUTIL_EXIT=0
+  #	SCAN_EXIT=0
+  #	MSIEXEC_EXIT=0
+  #	service: Running / Automatic
+  #	device: NO virtio-serial port
+  #
+  # qemu's own command line carries `-chardev socket,id=qga0,... -device virtio-serial -device
+  # virtserialport,chardev=qga0,name=org.qemu.guest_agent.0`, so the host side was right. `pnputil
+  # /add-driver` STAGES a package; the serial port device node is created by the driver's own
+  # AddDevice at boot, and a rescan does not create it. Windows has to restart.
+  #
+  # THE DISK PUBLISHED BEFORE THIS STEP EXISTED (`windows11-vm-configure`, 2026-11-19, commit
+  # e795895) WAS MADE BY A CHECK THAT ONLY PRINTED THE LINE AND NEVER FAILED - `if ($d) {...} else {
+  # Write-Output 'device: NO virtio-serial port' }` - so it recorded this same failure as a healthy
+  # run and the agent's channel was never proved. The assertion below is why it now fails here, and
+  # a restart is the smallest thing that makes it true.
+  step "restart, because the driver's port is made by the next boot"
+    ssh == "shutdown /r /t 0 /f"
+    timeout == 120
+  step "wait for sshd to come back on the new boot"
+    require_ssh == true
+    ssh_after_reboot == true
+    ssh_probe == echo ok
+    timeout == 900
   # THIS CHECK USED TO PRINT AND NEVER FAIL, AND THAT IS WHY A DEAD AGENT LOOKED HEALTHY.
   #
   # MEASURED ON RUN 44560274921, whose log is this step's own output:
