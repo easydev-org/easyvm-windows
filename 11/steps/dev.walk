@@ -175,8 +175,19 @@ walkthrough "windows 11 - dev toolchain"
   step "note what the toolchain reports"
     ssh == powershell -Command "'SDK=' + (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include' -Name -ErrorAction SilentlyContinue | Select-Object -Last 1) + ' DOTNET=' + ((& 'C:\Program Files\dotnet\dotnet.exe' --version) 2>&1)"
     timeout == 180
+  # `sudo -S ... poweroff` IS LINUX SYNTAX AND THIS IS A WINDOWS GUEST.
+  #
+  # MEASURED ON RUN 44915496183, step 33/35 with the other thirty-two all passed:
+  #
+  #	error: ask the guest to power off: the command exited 255
+  #
+  # 255 IS THE SSH CLIENT'S OWN FAILURE - there is no `sudo` and no `poweroff` in cmd.exe, and the
+  # wrapper reports the transport, not the missing program. The two sibling stages in this repository
+  # already stop this guest with `shutdown: kill` (`11/steps/ssh.walk`, `11/steps/vm-configure.walk`),
+  # and a qcow2 is journalled and qemu exits cleanly on the signal, so the disk the next stage boots
+  # is consistent - which is the property that matters here.
   step "ask the guest to power off"
-    ssh == printf '%s\n' '{{ password }}' | sudo -S -p '' poweroff
+    shutdown == kill
     timeout == 300
   step "wait for the machine to stop"
     wait_until == stopped
