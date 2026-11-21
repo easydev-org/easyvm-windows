@@ -124,7 +124,7 @@ jobs:
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
-      disk_gb: "25"
+      disk_gb: "40"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
       stages: |
@@ -135,7 +135,7 @@ jobs:
             "pull": "windows11-vm-configure",
             "out": "windows11-dev.qcow2",
             "publish": "windows11-dev",
-            "timeout": 90
+            "timeout": 150
           }
         ]
 

@@ -81,8 +81,26 @@ walkthrough "windows 11 - dev toolchain"
   # THIRTY MINUTES, which is the budget the OTHER slow boots in this repository already use
   # (`boot: timeout: 1800`, `wait for the desktop: timeout: 5400`). A restart that has not answered
   # in half an hour is a failure worth reporting; one that takes twelve minutes is not.
+  #
+  # AND THE RESTART IS ASKED FOR HERE RATHER THAN ASSUMED. `ssh_after_reboot:` WAITS FOR THE OLD SSHD
+  # TO STOP before it starts counting - which is right after a reboot command and wrong after these
+  # installers, because THEY DO NOT REBOOT. MEASURED ON RUN 44904946104:
+  #
+  #	=== install git
+  #	  ssh: ... install-git.ps1 -> 0
+  #	  waiting up to 30m0s for sshd on port 2222
+  #	  ... no answer for the whole thirty minutes, and no `still waiting` line either
+  #
+  # The old sshd answered the entire time - the machine had never gone down - so a wait that begins by
+  # demanding silence spent its whole budget waiting for something that was not going to happen. The
+  # restart is now a step of its own: `shutdown /r` ends the session, and the wait that follows is
+  # honest about what it is waiting for.
+  step "restart, because six installers have finished"
+    ssh == "shutdown /r /t 0 /f"
+    timeout == 120
   step "wait for sshd again"
     require_ssh == true
+    ssh_after_reboot == true
     ssh_probe == echo ok
     timeout == 1800
   step "copy msvc-check.ps1 in"
