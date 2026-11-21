@@ -35,10 +35,25 @@ if (-not $winget) {
 # a first-run agreement prompt from waiting for a console that does not exist.
 & $winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --source winget `
   --scope machine --version 17.14.44 --accept-source-agreements --disable-interactivity `
-  --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended" `
-  # THE EXIT CODE IS READ ON THE LINE IMMEDIATELY AFTER THE NATIVE CALL. `$LASTEXITCODE`
+  --override "--quiet --wait --norestart --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+
+# THE EXIT CODE IS READ ON THE LINE IMMEDIATELY AFTER THE NATIVE CALL. `$LASTEXITCODE`
 # belongs to the last native command, and a version of this step read it after a twenty-line
 # comment block and printed nothing at all.
+#
+# AND THE COMMENT THAT USED TO SIT HERE WAS INSIDE THE COMMAND. The `winget install` line ended in
+# a PowerShell backtick continuation and the next line was a `#` comment - so THE CONTINUATION
+# ENDED AT THE COMMENT and everything the author believed came after the override was not part of
+# the command at all.
+#
+# MEASURED ON RUN 44898296457, `windows-dev` step 7/32 "install the build tools":
+#
+#	ssh: powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/vmuser/install-buildtools.ps1
+#	     -> 2147500036
+#
+# 2147500036 IS 0x80004004, E_ABORT: the Visual Studio bootstrapper was asked to run and then
+# cancelled. The backtick is gone, so the switches and the workload are inside the command they were
+# written for; the exit code is read on the line after the call, which is what it always claimed.
 $rc = $LASTEXITCODE
 Write-Output ("WINGET_EXIT=" + $rc)
 
