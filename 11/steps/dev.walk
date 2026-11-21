@@ -103,6 +103,29 @@ walkthrough "windows 11 - dev toolchain"
     ssh_after_reboot == true
     ssh_probe == echo ok
     timeout == 1800
+  # A SESSION THAT OPENS IS NOT YET A SESSION THAT LASTS.
+  #
+  # MEASURED ON RUN 44911920930, `windows-dev` step 23/33 "build and run a C program":
+  #
+  #	error: build and run a C program: ssh: wait: remote command exited without exit status or
+  #	       exit signal
+  #
+  # THAT IS THE CLIENT LOSING THE CHANNEL, NOT THE COMMAND RETURNING - `cl.exe` had a 900-second
+  # budget and used none of it. The port came up one second after `shutdown /r`, which is sshd
+  # accepting connections while Windows is still bringing the rest of its services up; the first
+  # long-lived session is then closed underneath itself.
+  #
+  # SO THE RESTART IS FOLLOWED BY A PROBE THAT PROVES A SESSION, not just a listening socket. The
+  # `require_ssh:` above opens and closes a shell; this asks for output and waits for it, which is the
+  # shape of every step after it.
+  step "prove a session survives the first restart"
+    ssh == "echo SESSION_ALIVE"
+    timeout == 300
+  # AND THEN LET WINDOWS FINISH STARTING. Six installers have added services, PATH entries and
+  # first-run work; the probe above proves a shell answers, and this gives the machine the minutes
+  # that the `wait for sshd again` comment already measured at twelve.
+  step "let the machine finish coming up"
+    settle == 120
   step "copy msvc-check.ps1 in"
     scp == [msvc-check.ps1, "C:/Users/{{ user }}/msvc-check.ps1"]
     timeout == 300
