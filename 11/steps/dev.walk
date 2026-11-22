@@ -1,196 +1,268 @@
 walkthrough "windows 11 - dev toolchain"
-  resolution 1920x1080
-  recording_resolution 1920x1080
-  user vmuser
-  password admin
-  var out == {default: out/distro.qcow2, from: args.out}
-  var user == {default: vmuser, from: args.user}
-  header boot_disk == from_caller
-  header ssh_port == 2222
+resolution 1920x1080
+recording_resolution 1920x1080
+user vmuser
+var out
+  default out/distro.qcow2
+  from args.out
+password admin
+var user
+  default vmuser
+  from args.user
+boot_disk from_caller
+ssh_port 2222
+step "boot the disk"
+  boot
+  # A FIXED SIZE FOR EVERY GUEST OF THIS FAMILY: see the header comment.
+  memory_mb 12288
+  os windows
+  timeout 900
 
-  step "boot the disk"
-    boot == true
-    os == windows
-    # A FIXED SIZE FOR EVERY GUEST OF THIS FAMILY: see the header comment.
-    memory_mb == 12288
-    timeout == 900
-  step "wait for the desktop"
-    desktop == windows
-    timeout == 900
-  step "wait for sshd"
-    require_ssh == true
-    ssh_probe == echo ok
-    timeout == 900
-  step "copy wait-winget.ps1 in"
-    scp == [wait-winget.ps1, "C:/Users/{{ user }}/wait-winget.ps1"]
-    timeout == 300
-  step "wait for winget to have an index"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/wait-winget.ps1"
-    timeout == 900
-  step "copy install-buildtools.ps1 in"
-    scp == [install-buildtools.ps1, "C:/Users/{{ user }}/install-buildtools.ps1"]
-    timeout == 300
-  step "install the build tools"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-buildtools.ps1"
-    timeout == 3600
-  step "copy install-the-windows-sdk.ps1 in"
-    scp == [install-the-windows-sdk.ps1, "C:/Users/{{ user }}/install-the-windows-sdk.ps1"]
-    timeout == 300
-  step "install the windows sdk"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-the-windows-sdk.ps1"
-    timeout == 2400
-  step "copy install-the-dotnet-sdk.ps1 in"
-    scp == [install-the-dotnet-sdk.ps1, "C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"]
-    timeout == 300
-  step "install the dotnet sdk"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"
-    timeout == 2400
-  step "copy install-powershell-7.ps1 in"
-    scp == [install-powershell-7.ps1, "C:/Users/{{ user }}/install-powershell-7.ps1"]
-    timeout == 300
-  step "install powershell 7"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-powershell-7.ps1"
-    timeout == 2400
-  step "copy install-python.ps1 in"
-    scp == [install-python.ps1, "C:/Users/{{ user }}/install-python.ps1"]
-    timeout == 300
-  step "install python"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-python.ps1"
-    timeout == 2400
-  step "copy install-node.ps1 in"
-    scp == [install-node.ps1, "C:/Users/{{ user }}/install-node.ps1"]
-    timeout == 300
-  step "install node"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-node.ps1"
-    timeout == 2400
-  step "copy install-git.ps1 in"
-    scp == [install-git.ps1, "C:/Users/{{ user }}/install-git.ps1"]
-    timeout == 300
-  step "install git"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-git.ps1"
-    timeout == 2400
-  # THE FIRST RESTART AFTER SIX INSTALLERS TAKES LONGER THAN TEN MINUTES.
-  #
-  # MEASURED on run 44196553357, the first run to install everything: build tools, the Windows SDK,
-  # the .NET SDK, PowerShell 7, Python, Node and Git all succeeded, the machine rebooted - and sshd did
-  # not answer within the 600 seconds this step allowed. The step before the installs uses the same
-  # `require_ssh:` and passes in seconds, so the difference is what is now on the disk: six packages'
-  # worth of services, PATH entries and first-run work, all of it happening while Windows is still
-  # bringing its own services up.
-  #
-  # THIRTY MINUTES, which is the budget the OTHER slow boots in this repository already use
-  # (`boot: timeout: 1800`, `wait for the desktop: timeout: 5400`). A restart that has not answered
-  # in half an hour is a failure worth reporting; one that takes twelve minutes is not.
-  #
-  # AND THE RESTART IS ASKED FOR HERE RATHER THAN ASSUMED. `ssh_after_reboot:` WAITS FOR THE OLD SSHD
-  # TO STOP before it starts counting - which is right after a reboot command and wrong after these
-  # installers, because THEY DO NOT REBOOT. MEASURED ON RUN 44904946104:
-  #
-  #	=== install git
-  #	  ssh: ... install-git.ps1 -> 0
-  #	  waiting up to 30m0s for sshd on port 2222
-  #	  ... no answer for the whole thirty minutes, and no `still waiting` line either
-  #
-  # The old sshd answered the entire time - the machine had never gone down - so a wait that begins by
-  # demanding silence spent its whole budget waiting for something that was not going to happen. The
-  # restart is now a step of its own: `shutdown /r` ends the session, and the wait that follows is
-  # honest about what it is waiting for.
-  step "restart, because six installers have finished"
-    ssh == "shutdown /r /t 0 /f"
-    timeout == 120
-  step "wait for sshd again"
-    require_ssh == true
-    ssh_after_reboot == true
-    ssh_probe == echo ok
-    timeout == 1800
-  # A SESSION THAT OPENS IS NOT YET A SESSION THAT LASTS.
-  #
-  # MEASURED ON RUN 44911920930, `windows-dev` step 23/33 "build and run a C program":
-  #
-  #	error: build and run a C program: ssh: wait: remote command exited without exit status or
-  #	       exit signal
-  #
-  # THAT IS THE CLIENT LOSING THE CHANNEL, NOT THE COMMAND RETURNING - `cl.exe` had a 900-second
-  # budget and used none of it. The port came up one second after `shutdown /r`, which is sshd
-  # accepting connections while Windows is still bringing the rest of its services up; the first
-  # long-lived session is then closed underneath itself.
-  #
-  # SO THE RESTART IS FOLLOWED BY A PROBE THAT PROVES A SESSION, not just a listening socket. The
-  # `require_ssh:` above opens and closes a shell; this asks for output and waits for it, which is the
-  # shape of every step after it.
-  step "prove a session survives the first restart"
-    ssh == "echo SESSION_ALIVE"
-    timeout == 300
-  # AND THEN LET WINDOWS FINISH STARTING. Six installers have added services, PATH entries and
-  # first-run work; the probe above proves a shell answers, and this gives the machine the minutes
-  # that the `wait for sshd again` comment already measured at twelve.
-  step "let the machine finish coming up"
-    settle == 120
-  step "copy msvc-check.ps1 in"
-    scp == [msvc-check.ps1, "C:/Users/{{ user }}/msvc-check.ps1"]
-    timeout == 300
-  step "build and run a C program"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/msvc-check.ps1"
-    timeout == 900
-  step "copy dotnet-check.ps1 in"
-    scp == [dotnet-check.ps1, "C:/Users/{{ user }}/dotnet-check.ps1"]
-    timeout == 300
-  step "build and run a dotnet app"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/dotnet-check.ps1"
-    timeout == 1800
-  # `pwsh` IS INSTALLED AND NOT YET ON PATH, BECAUSE PATH IS PER-SESSION ON WINDOWS.
-  #
-  # THE INSTALL SUCCEEDS - the step above downloads and hash-verifies the MSI:
-  #
-  #	=== install powershell 7
-  #	  script install-powershell-7.ps1 (powershell) -> 0
-  #	  Downloading https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.msi
-  #	  Successfully verified installer hash
-  #
-  # and then the very next step cannot find it:
-  #
-  #	=== prove powershell 7
-  #	  ssh: powershell -Command "pwsh -v" -> 1
-  #	  pwsh : The term 'pwsh' is not recognized ...
-  #
-  # MEASURED on run 44177932721, step 16/22. `winget --scope machine` writes the new directory into the
-  # MACHINE PATH, and an ssh exec shell inherits the environment sshd captured when it STARTED - which
-  # was before the install. The same file already knows this: `install the build tools` resolves
-  # `winget.exe` out of the registry PATH instead of trusting `$env:PATH`, for exactly this reason.
-  #
-  # SO THE PROOF LOOKS WHERE THE INSTALLER PUT IT, and still runs it: a path that exists and answers is
-  # a stronger statement than a name that resolves.
-  step "prove powershell 7"
-    ssh == powershell -Command "$p = 'C:\Program Files\PowerShell\7\pwsh.exe'; if (Test-Path $p) { & $p -v } else { 'PWSH_MISSING'; exit 1 }"
-    timeout == 300
-  step "prove the windows sdk"
-    ssh == powershell -Command "if (Test-Path 'C:\Program Files (x86)\Windows Kits\10\Include') { Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include' -Name } else { 'SDK_MISSING' }"
-    timeout == 120
-  step "copy prove-python-node-git.ps1 in"
-    scp == [prove-python-node-git.ps1, "C:/Users/{{ user }}/prove-python-node-git.ps1"]
-    timeout == 300
-  step "prove python node and git"
-    ssh == "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/prove-python-node-git.ps1"
-    timeout == 300
-  step "note what the toolchain reports"
-    ssh == powershell -Command "'SDK=' + (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include' -Name -ErrorAction SilentlyContinue | Select-Object -Last 1) + ' DOTNET=' + ((& 'C:\Program Files\dotnet\dotnet.exe' --version) 2>&1)"
-    timeout == 180
-  # `sudo -S ... poweroff` IS LINUX SYNTAX AND THIS IS A WINDOWS GUEST.
-  #
-  # MEASURED ON RUN 44915496183, step 33/35 with the other thirty-two all passed:
-  #
-  #	error: ask the guest to power off: the command exited 255
-  #
-  # 255 IS THE SSH CLIENT'S OWN FAILURE - there is no `sudo` and no `poweroff` in cmd.exe, and the
-  # wrapper reports the transport, not the missing program. The two sibling stages in this repository
-  # already stop this guest with `shutdown: kill` (`11/steps/ssh.walk`, `11/steps/vm-configure.walk`),
-  # and a qcow2 is journalled and qemu exits cleanly on the signal, so the disk the next stage boots
-  # is consistent - which is the property that matters here.
-  step "ask the guest to power off"
-    shutdown == kill
-    timeout == 300
-  step "wait for the machine to stop"
-    wait_until == stopped
-    timeout == 300
-  step "publish the disk"
-    compress == '{{ out }}'
+
+step "wait for the desktop"
+  desktop windows
+  timeout 900
+
+
+step "wait for sshd"
+  repeat
+    until machine_ssh
+    max 90
+    pause 10
+
+
+step "copy wait-winget.ps1 in"
+  copy wait-winget.ps1 "C:/Users/{{ user }}/wait-winget.ps1"
+  timeout 300
+
+
+step "wait for winget to have an index"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/wait-winget.ps1"
+  timeout 900
+
+
+step "copy install-buildtools.ps1 in"
+  copy install-buildtools.ps1 "C:/Users/{{ user }}/install-buildtools.ps1"
+  timeout 300
+
+
+step "install the build tools"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-buildtools.ps1"
+  timeout 3600
+
+
+step "copy install-the-windows-sdk.ps1 in"
+  copy install-the-windows-sdk.ps1 "C:/Users/{{ user }}/install-the-windows-sdk.ps1"
+  timeout 300
+
+
+step "install the windows sdk"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-the-windows-sdk.ps1"
+  timeout 2400
+
+
+step "copy install-the-dotnet-sdk.ps1 in"
+  copy install-the-dotnet-sdk.ps1 "C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"
+  timeout 300
+
+
+step "install the dotnet sdk"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"
+  timeout 2400
+
+
+step "copy install-powershell-7.ps1 in"
+  copy install-powershell-7.ps1 "C:/Users/{{ user }}/install-powershell-7.ps1"
+  timeout 300
+
+
+step "install powershell 7"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-powershell-7.ps1"
+  timeout 2400
+
+
+step "copy install-python.ps1 in"
+  copy install-python.ps1 "C:/Users/{{ user }}/install-python.ps1"
+  timeout 300
+
+
+step "install python"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-python.ps1"
+  timeout 2400
+
+
+step "copy install-node.ps1 in"
+  copy install-node.ps1 "C:/Users/{{ user }}/install-node.ps1"
+  timeout 300
+
+
+step "install node"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-node.ps1"
+  timeout 2400
+
+
+step "copy install-git.ps1 in"
+  copy install-git.ps1 "C:/Users/{{ user }}/install-git.ps1"
+  timeout 300
+
+
+step "install git"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/install-git.ps1"
+  timeout 2400
+# THE FIRST RESTART AFTER SIX INSTALLERS TAKES LONGER THAN TEN MINUTES.
+#
+# MEASURED on run 44196553357, the first run to install everything: build tools, the Windows SDK,
+# the .NET SDK, PowerShell 7, Python, Node and Git all succeeded, the machine rebooted - and sshd did
+# not answer within the 600 seconds this step allowed. The step before the installs uses the same
+# `require_ssh:` and passes in seconds, so the difference is what is now on the disk: six packages'
+# worth of services, PATH entries and first-run work, all of it happening while Windows is still
+# bringing its own services up.
+#
+# THIRTY MINUTES, which is the budget the OTHER slow boots in this repository already use
+# (`boot: timeout: 1800`, `wait for the desktop: timeout: 5400`). A restart that has not answered
+# in half an hour is a failure worth reporting; one that takes twelve minutes is not.
+#
+# AND THE RESTART IS ASKED FOR HERE RATHER THAN ASSUMED. `ssh_after_reboot:` WAITS FOR THE OLD SSHD
+# TO STOP before it starts counting - which is right after a reboot command and wrong after these
+# installers, because THEY DO NOT REBOOT. MEASURED ON RUN 44904946104:
+#
+#	=== install git
+#	  ssh: ... install-git.ps1 -> 0
+#	  waiting up to 30m0s for sshd on port 2222
+#	  ... no answer for the whole thirty minutes, and no `still waiting` line either
+#
+# The old sshd answered the entire time - the machine had never gone down - so a wait that begins by
+# demanding silence spent its whole budget waiting for something that was not going to happen. The
+# restart is now a step of its own: `shutdown /r` ends the session, and the wait that follows is
+# honest about what it is waiting for.
+
+
+step "restart, because six installers have finished"
+  ssh "shutdown /r /t 0 /f"
+  timeout 120
+
+
+step "wait for sshd again"
+  repeat
+    until machine_ssh
+    max 180
+    pause 10
+# A SESSION THAT OPENS IS NOT YET A SESSION THAT LASTS.
+#
+# MEASURED ON RUN 44911920930, `windows-dev` step 23/33 "build and run a C program":
+#
+#	error: build and run a C program: ssh: wait: remote command exited without exit status or
+#	       exit signal
+#
+# THAT IS THE CLIENT LOSING THE CHANNEL, NOT THE COMMAND RETURNING - `cl.exe` had a 900-second
+# budget and used none of it. The port came up one second after `shutdown /r`, which is sshd
+# accepting connections while Windows is still bringing the rest of its services up; the first
+# long-lived session is then closed underneath itself.
+#
+# SO THE RESTART IS FOLLOWED BY A PROBE THAT PROVES A SESSION, not just a listening socket. The
+# `require_ssh:` above opens and closes a shell; this asks for output and waits for it, which is the
+# shape of every step after it.
+
+
+step "prove a session survives the first restart"
+  ssh "echo SESSION_ALIVE"
+  timeout 300
+# AND THEN LET WINDOWS FINISH STARTING. Six installers have added services, PATH entries and
+# first-run work; the probe above proves a shell answers, and this gives the machine the minutes
+# that the `wait for sshd again` comment already measured at twelve.
+
+
+step "let the machine finish coming up"
+  settle 120
+
+
+step "copy msvc-check.ps1 in"
+  copy msvc-check.ps1 "C:/Users/{{ user }}/msvc-check.ps1"
+  timeout 300
+
+
+step "build and run a C program"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/msvc-check.ps1"
+  timeout 900
+
+
+step "copy dotnet-check.ps1 in"
+  copy dotnet-check.ps1 "C:/Users/{{ user }}/dotnet-check.ps1"
+  timeout 300
+
+
+step "build and run a dotnet app"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/dotnet-check.ps1"
+  timeout 1800
+# `pwsh` IS INSTALLED AND NOT YET ON PATH, BECAUSE PATH IS PER-SESSION ON WINDOWS.
+#
+# THE INSTALL SUCCEEDS - the step above downloads and hash-verifies the MSI:
+#
+#	=== install powershell 7
+#	  script install-powershell-7.ps1 (powershell) -> 0
+#	  Downloading https://github.com/PowerShell/PowerShell/releases/download/v7.6.10/PowerShell-7.6.10-win-x64.msi
+#	  Successfully verified installer hash
+#
+# and then the very next step cannot find it:
+#
+#	=== prove powershell 7
+#	  ssh: powershell -Command "pwsh -v" -> 1
+#	  pwsh : The term 'pwsh' is not recognized ...
+#
+# MEASURED on run 44177932721, step 16/22. `winget --scope machine` writes the new directory into the
+# MACHINE PATH, and an ssh exec shell inherits the environment sshd captured when it STARTED - which
+# was before the install. The same file already knows this: `install the build tools` resolves
+# `winget.exe` out of the registry PATH instead of trusting `$env:PATH`, for exactly this reason.
+#
+# SO THE PROOF LOOKS WHERE THE INSTALLER PUT IT, and still runs it: a path that exists and answers is
+# a stronger statement than a name that resolves.
+
+
+step "prove powershell 7"
+  ssh "powershell -Command \"$p = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe'; if (Test-Path $p) { & $p -v } else { 'PWSH_MISSING'; exit 1 }\""
+  timeout 300
+
+
+step "prove the windows sdk"
+  ssh "powershell -Command \"if (Test-Path 'C:\\Program Files (x86)\\Windows Kits\\10\\Include') { Get-ChildItem 'C:\\Program Files (x86)\\Windows Kits\\10\\Include' -Name } else { 'SDK_MISSING' }\""
+  timeout 120
+
+
+step "copy prove-python-node-git.ps1 in"
+  copy prove-python-node-git.ps1 "C:/Users/{{ user }}/prove-python-node-git.ps1"
+  timeout 300
+
+
+step "prove python node and git"
+  ssh "powershell -NoProfile -ExecutionPolicy Bypass -File C:/Users/{{ user }}/prove-python-node-git.ps1"
+  timeout 300
+
+
+step "note what the toolchain reports"
+  ssh "powershell -Command \"'SDK=' + (Get-ChildItem 'C:\\Program Files (x86)\\Windows Kits\\10\\Include' -Name -ErrorAction SilentlyContinue | Select-Object -Last 1) + ' DOTNET=' + ((& 'C:\\Program Files\\dotnet\\dotnet.exe' --version) 2>&1)\""
+  timeout 180
+# `sudo -S ... poweroff` IS LINUX SYNTAX AND THIS IS A WINDOWS GUEST.
+#
+# MEASURED ON RUN 44915496183, step 33/35 with the other thirty-two all passed:
+#
+#	error: ask the guest to power off: the command exited 255
+#
+# 255 IS THE SSH CLIENT'S OWN FAILURE - there is no `sudo` and no `poweroff` in cmd.exe, and the
+# wrapper reports the transport, not the missing program. The two sibling stages in this repository
+# already stop this guest with `shutdown: kill` (`11/steps/ssh.walk`, `11/steps/vm-configure.walk`),
+# and a qcow2 is journalled and qemu exits cleanly on the signal, so the disk the next stage boots
+# is consistent - which is the property that matters here.
+
+
+step "ask the guest to power off"
+  stop kill
+  timeout 300
+
+
+step "wait for the machine to stop"
+  wait_until stopped
+  timeout 300
+
+
+step "publish the disk"
+  save "{{ out }}"
