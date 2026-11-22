@@ -53,10 +53,11 @@ jobs:
     # produces the input did not, and every later gate is written in terms of tags this job would have
     # replaced.
     if: github.event_name != 'workflow_dispatch' || inputs.from_tag == ''
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@main
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
+      image_tag: v0.0.2
       disk_gb: "25"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
@@ -76,10 +77,11 @@ jobs:
   ssh:
     needs: [install]
     if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.from_tag == '' || inputs.from_tag == 'windows11')
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@main
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
+      image_tag: v0.0.2
       disk_gb: "25"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
@@ -98,10 +100,11 @@ jobs:
   vm:
     needs: [ssh]
     if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.from_tag == '' || inputs.from_tag == 'windows11' || inputs.from_tag == 'windows11-ssh')
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@main
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
+      image_tag: v0.0.2
       disk_gb: "25"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
@@ -120,10 +123,11 @@ jobs:
   dev:
     needs: [vm]
     if: always() && !cancelled() && (github.event_name != 'workflow_dispatch' || inputs.from_tag == '' || inputs.from_tag == 'windows11' || inputs.from_tag == 'windows11-ssh' || inputs.from_tag == 'windows11-vm-configure')
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@main
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
+      image_tag: v0.0.2
       disk_gb: "40"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
