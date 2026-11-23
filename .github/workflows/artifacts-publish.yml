@@ -298,11 +298,15 @@ jobs:
     # A `which:` THAT NAMES AN ANSWER TAG RUNS ONLY THAT ROW, the same contract the ISO rows have.
     # MEASURED: without this, `-f which=answer-win10` published the whole group - all four answer
     # CDs, each pulling a 5-8 GiB medium - because the guard only knew the empty case.
+    # `which` WINS OVER `group`, AND THE GROUP CHECKS HAVE TO SAY SO.
+    #
+    # MEASURED: this condition was `|| inputs.group == 'all' || ...` and `group` DEFAULTS TO 'all', so
+    # every `-f which=iso-win2025` dispatch also ran all four answer jobs - each pulling a 5-8 GiB
+    # medium it was not asked for. A default value that satisfies a guard is a guard that checks
+    # nothing, which is the same shape as the selection input that downloaded seventeen artifacts.
     if: >-
       github.event_name != 'workflow_dispatch'
-      || inputs.group == 'all'
-      || inputs.group == 'windows'
-      || inputs.which == ''
+      || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'windows'))
       || startsWith(inputs.which, 'answer-')
     strategy:
       fail-fast: false
@@ -325,8 +329,13 @@ jobs:
           ROW_TAG: ${{ matrix.answer.tag }}
         run: |
           set -eu
-          if [ -z "${WHICH:-}" ] || [ "${WHICH#answer-}" = "$WHICH" ]; then
+          # EMPTY MEANS "EVERY ROW", ANYTHING ELSE MEANS "THE ROW WITH THIS TAG". A `which` that names
+          # an ISO is not a request for an answer CD, and the test has to be an equality rather than
+          # a prefix comparison: `[ "${WHICH#answer-}" = "$WHICH" ]` is TRUE for `iso-win2025` as well
+          # as for empty, which is how all four answer jobs ran on an ISO-only dispatch.
+          if [ -z "${WHICH:-}" ]; then
             echo "wanted=yes" >> "$GITHUB_OUTPUT"
+            echo "no which: this row runs"
             exit 0
           fi
           if [ "$ROW_TAG" = "$WHICH" ]; then
