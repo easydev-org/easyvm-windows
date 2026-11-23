@@ -361,6 +361,18 @@ jobs:
         if: steps.wanted.outputs.wanted == 'yes'
         # THE BUILD DOES NOT DOWNLOAD. It reads `virtio-win.iso` from its work directory and fails in
         # the first second without it, which is the rule every stage here follows.
+        #
+        # IT IS A TAR, LIKE EVERY OTHER PUBLISHED ASSET, AND THIS STEP USED TO STOP BEFORE UNPACKING.
+        # MEASURED on run 45222417338: the driver extractor reported `members listed: 1` and twelve
+        # ABSENT directories, with 7-Zip 26 - i.e. the file at `virtio-win.iso` was the ARCHIVE, whose
+        # single member is named `iso-virtio-win`, not the driver medium at all.
+        #
+        # THAT WENT UNNOTICED FOR EVERY EARLIER WINDOWS RUN because a driver set of zero did not stop
+        # the build: the answer CD shipped with no `$WinPEDriver$` content and Setup was assumed to
+        # cope. It does not - `viostor` is what makes windowsPE see the virtio disk - and the only
+        # reason installs ever worked is that Windows also finds the driver on the virtio-win ISO this
+        # repository attaches as a second CD. The answer CD is supposed to be self-sufficient, so the
+        # tar is unpacked here, exactly as the Windows medium step does it.
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -369,8 +381,25 @@ jobs:
           cd "$GITHUB_WORKSPACE/work"
           sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
             ghcr.io "${{ inputs.disks_repository || github.repository }}" \
-            iso-virtio-win virtio-win.iso
+            iso-virtio-win virtio-win.tar
+          echo "=== the archive is $(stat -c %s virtio-win.tar) bytes"
+          before=$(mktemp); ls -1 . > "$before"
+          tar -xf virtio-win.tar
+          rm -f virtio-win.tar
+          added=$(ls -1 | grep -vxF -f "$before" | head -2)
+          n=$(printf '%s\n' "$added" | grep -c . || true)
+          [ "$n" = "1" ] || {
+            echo "::error::iso-virtio-win unpacked to $n new entries, not one:"
+            printf '  %s\n' $added
+            exit 1
+          }
+          mv "$added" virtio-win.iso
+          rm -f "$before"
           ls -l virtio-win.iso
+          # THE VOLUME ID IS THE CHEAPEST PROOF THAT THIS IS A MEDIUM AND NOT AN ARCHIVE. The
+          # virtio-win ISO's own label is `virtio-win`; an ISO9660 primary volume descriptor puts it
+          # at offset 16*2048+40, and reading it needs no tool.
+          echo "=== volume id: $(dd if=virtio-win.iso bs=1 skip=$((16*2048+40)) count=32 2>/dev/null | tr -d '\0')"
 
       - name: pull the Windows medium the edition table is read from
         if: steps.wanted.outputs.wanted == 'yes'
@@ -544,6 +573,15 @@ jobs:
           sudo apt-get install -y -qq p7zip-full
 
       - name: pull the virtio-win ISO
+        # THE SAME UNPACK AS THE ANSWER JOB, AND THIS ONE WAS BROKEN THE SAME WAY. `pull-artifact.sh`
+        # moves the registry's blob; every published asset is a tar holding one file, so a step that
+        # stops after the pull is holding an archive with the medium's name.
+        #
+        # WHAT THAT DID HERE: `7z e virtio-win.iso guest-agent/qemu-ga-x86_64.msi` found no members,
+        # and the check below it - "the ISO has no $f" - is what caught it. So this job has been
+        # FAILING rather than publishing something wrong, which is the better of the two, but the
+        # `virtio-agent` tag it is supposed to publish has never been produced on a run that read this
+        # path. A guest that needs the agent gets `iso-virtio-win` attached directly instead.
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -552,8 +590,21 @@ jobs:
           cd "$GITHUB_WORKSPACE/work"
           sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
             ghcr.io "${{ inputs.disks_repository || github.repository }}" \
-            iso-virtio-win virtio-win.iso
+            iso-virtio-win virtio-win.tar
+          before=$(mktemp); ls -1 . > "$before"
+          tar -xf virtio-win.tar
+          rm -f virtio-win.tar
+          added=$(ls -1 | grep -vxF -f "$before" | head -2)
+          n=$(printf '%s\n' "$added" | grep -c . || true)
+          [ "$n" = "1" ] || {
+            echo "::error::iso-virtio-win unpacked to $n new entries, not one:"
+            printf '  %s\n' $added
+            exit 1
+          }
+          mv "$added" virtio-win.iso
+          rm -f "$before"
           ls -l virtio-win.iso
+          echo "=== volume id: $(dd if=virtio-win.iso bs=1 skip=$((16*2048+40)) count=32 2>/dev/null | tr -d '\0')"
 
       - name: extract the agent and its driver
         run: |
