@@ -41,11 +41,11 @@ permissions:
 jobs:
   ssh:
     needs: [install]
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
-      image_tag: v0.0.2
+      image_tag: v0.0.3-dev
       disk_gb: "25"
       group: windows
       disks_repository: ${{ inputs.disks_repository }}
