@@ -173,3 +173,94 @@ jobs:
   # THE SOURCE IS THE PUBLISHER'S OWN PACKAGE for both rows. `sequoia` was mirrored from THIS
   # repository before (it had been copied here once by hand); pulling both from `easydiskbake` makes
   # the two rows the same shape and leaves one origin for every Apple image.
+
+  # THE ANSWER CD A WINDOWS GUEST BOOTS WITH, BUILT HERE INSTEAD OF IN EVERY STAGE.
+  #
+  # IT USED TO BE A `fetch: answer_iso` STEP INSIDE `easyvm run`, which meant the engine carried an
+  # ISO9660 writer (internal/answer, 315 lines) and a driver extractor, and every Windows stage paid
+  # for a build whose inputs never change:
+  #
+  #	user      vmuser     the walk's own default
+  #	password  admin      the walk's own default
+  #	computer  sandbox    the walk's own default
+  #	image     6          the walk's own default
+  #
+  # THE IDENTITY IS SHARED ON PURPOSE, which is the same call macOS's firmware build made: a guest's
+  # identity is a fact about the IMAGE, not about a run. A published disk whose password changes per
+  # run cannot be re-opened by the stage after it, and that is the whole point of publishing one.
+  #
+  # THE SAME OUTPUT AS THE ENGINE'S BUILDER, VERIFIED: scripts/build-answer.py and the Go code produce
+  # a byte-identical tree - 24 files, `diff -r` clean - for the same template and virtio-win ISO.
+  #
+  # THE TAG IS `answer-windows11`, named for the GUEST because the image index and the account are
+  # facts about it. A second Windows release is a second row, not a different flag.
+  answer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      checks: write
+    if: github.event_name != 'workflow_dispatch' || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'windows'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the tools the build needs
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          # `p7zip-full` reads the Joliet tree the drivers live in, and `xorriso` writes the ISO.
+          # BOTH ARE NAMED BECAUSE THEIR ABSENCE IS A DIFFERENT FAILURE EACH TIME: a hand-written
+          # Joliet reader produces 8.3 names that do not match the driver the answer file names.
+          sudo apt-get install -y -qq p7zip-full xorriso
+
+      - name: pull the virtio-win ISO the drivers come from
+        # THE BUILD DOES NOT DOWNLOAD. It reads `virtio-win.iso` from its work directory and fails in
+        # the first second without it, which is the rule every stage here follows.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          cd "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            "${{ inputs.disks_repository || github.repository }}" \
+            iso-virtio-win virtio-win.iso
+          ls -l virtio-win.iso
+
+      - name: build answer.iso from the pinned inputs
+        # THIS IS A PYTHON SCRIPT, NOT A WALKTHROUGH STEP, AND THE REASON IS WHAT THE BUILD IS: it
+        # renders an XML file, extracts four driver directories and runs xorriso. It never boots a
+        # guest and needs no screen, so running it as a step made a build failure read like a guest
+        # failure.
+        run: |
+          set -eu
+          python3 "$GITHUB_WORKSPACE/scripts/build-answer.py" \
+            --template "$GITHUB_WORKSPACE/11/answer/Autounattend.xml" \
+            --virtio-iso "$GITHUB_WORKSPACE/work/virtio-win.iso" \
+            --out "$GITHUB_WORKSPACE/work/answer.iso"
+
+      - name: the ISO is big enough to be an answer CD
+        # A 448 KB ISO IS THE FAILURE THIS CHECK EXISTS TO AVOID: a boot record with the answer file
+        # and none of the installer's drivers, which Setup accepts and then cannot see the disk with.
+        run: |
+          set -eu
+          size=$(stat -c %s "$GITHUB_WORKSPACE/work/answer.iso")
+          if [ "$size" -lt $((100 * 1024)) ]; then
+            echo "::error::answer.iso is $size bytes, smaller than an ISO9660 volume with one file"
+            echo "::error::and a driver tree: xorriso wrote a boot record only."
+            exit 1
+          fi
+          ls -l "$GITHUB_WORKSPACE/work/answer.iso"
+
+      - name: push answer-windows11
+        # ONE TAG, ONE ISO. The engine pulls it by this name and copies it to the work directory, so
+        # renaming one without the other is a stage that finds no answer file.
+        uses: easydev-org/easyactions/oci-push@main
+        with:
+          path: ${{ github.workspace }}/work/answer.iso
+          tag: answer-windows11
+          repository: ${{ inputs.disks_repository || github.repository }}
+          media-type: application/vnd.easydev.artifact
+          token: ${{ github.token }}
+          check-name: answer-windows11
