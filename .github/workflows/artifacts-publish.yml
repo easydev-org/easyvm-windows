@@ -295,7 +295,15 @@ jobs:
       contents: read
       packages: write
       checks: write
-    if: github.event_name != 'workflow_dispatch' || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'windows'))
+    # A `which:` THAT NAMES AN ANSWER TAG RUNS ONLY THAT ROW, the same contract the ISO rows have.
+    # MEASURED: without this, `-f which=answer-win10` published the whole group - all four answer
+    # CDs, each pulling a 5-8 GiB medium - because the guard only knew the empty case.
+    if: >-
+      github.event_name != 'workflow_dispatch'
+      || inputs.group == 'all'
+      || inputs.group == 'windows'
+      || inputs.which == ''
+      || startsWith(inputs.which, 'answer-')
     strategy:
       fail-fast: false
       matrix:
@@ -308,6 +316,25 @@ jobs:
           - { family: "win2025",       tag: "answer-win2025",           medium: "iso-win2025" }
     steps:
       - uses: actions/checkout@v4
+
+      # A ROW THAT WAS NOT ASKED FOR EXITS BEFORE IT PULLS A FIVE-GIGABYTE MEDIUM.
+      - name: is this answer row wanted
+        id: wanted
+        env:
+          WHICH: ${{ inputs.which }}
+          ROW_TAG: ${{ matrix.answer.tag }}
+        run: |
+          set -eu
+          if [ -z "${WHICH:-}" ] || [ "${WHICH#answer-}" = "$WHICH" ]; then
+            echo "wanted=yes" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$ROW_TAG" = "$WHICH" ]; then
+            echo "wanted=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "wanted=no" >> "$GITHUB_OUTPUT"
+            echo "skipped: asked for $WHICH, this row is $ROW_TAG"
+          fi
 
       - name: the tools the build needs
         run: |
@@ -322,6 +349,7 @@ jobs:
           sudo apt-get install -y -qq p7zip-full xorriso wimtools
 
       - name: pull the virtio-win ISO the drivers come from
+        if: steps.wanted.outputs.wanted == 'yes'
         # THE BUILD DOES NOT DOWNLOAD. It reads `virtio-win.iso` from its work directory and fails in
         # the first second without it, which is the rule every stage here follows.
         env:
@@ -336,6 +364,7 @@ jobs:
           ls -l virtio-win.iso
 
       - name: pull the Windows medium the edition table is read from
+        if: steps.wanted.outputs.wanted == 'yes'
         # THE MEDIUM IS AN INPUT TO THE ANSWER FILE, WHICH IS THE WHOLE CHANGE. It used to be only an
         # input to the INSTALL; now the image index comes out of it, so a family whose medium is absent
         # cannot produce a correct answer file and must fail here rather than at Setup.
@@ -354,6 +383,7 @@ jobs:
           ls -l windows.iso
 
       - name: build the answer CD for this family, reading its image table
+        if: steps.wanted.outputs.wanted == 'yes'
         # THIS IS A SHELL SCRIPT OVER TWO PYTHON ONES, AND THE SPLIT IS BY DECISION RATHER THAN BY
         # LANGUAGE:
         #
@@ -374,6 +404,7 @@ jobs:
             "$GITHUB_WORKSPACE/work/answer.iso"
 
       - name: the ISO is big enough to be an answer CD
+        if: steps.wanted.outputs.wanted == 'yes'
         # A 448 KB ISO IS THE FAILURE THIS CHECK EXISTS TO AVOID: a boot record with the answer file
         # and none of the installer's drivers, which Setup accepts and then cannot see the disk with.
         run: |
@@ -387,6 +418,7 @@ jobs:
           ls -l "$GITHUB_WORKSPACE/work/answer.iso"
 
       - name: the answer file names an image that this medium has
+        if: steps.wanted.outputs.wanted == 'yes'
         # THE READ-BACK THAT MAKES THE SELECTOR A CHECKED FACT RATHER THAN A VALUE SOMEBODY TYPED.
         # The ISO the build just wrote is unpacked and its `/IMAGE/INDEX` (or `/IMAGE/NAME`) is looked
         # up in the SAME table the build read - so a selector that does not resolve fails HERE, with
@@ -411,6 +443,7 @@ jobs:
             "$GITHUB_WORKSPACE/work/windows.iso"
 
       - name: pack the answer CD into the tar the engine unpacks
+        if: steps.wanted.outputs.wanted == 'yes'
         # ONE TAG, ONE TAR, BECAUSE THE ENGINE'S `fetchAnswerISO` UNPACKS IT.
         #
         # `internal/asset/fetchAnswerISO` calls `pullTag` then `untar` and then stats
@@ -429,6 +462,7 @@ jobs:
           ls -l answer-cd.tar
 
       - name: push the answer CD under this family's tag
+        if: steps.wanted.outputs.wanted == 'yes'
         # THE TAG NAMES THE GUEST, because a product key and an image selector are facts about a
         # RELEASE. `answer-windows11` is the one the existing 11 walks pull; the three new tags are
         # what the new walks will pull.
