@@ -42,18 +42,35 @@ step "wait for the firmware to offer the DVD"
   timeout 180
 
 
+# RETURN, NOT ESCAPE, AND THE DIFFERENCE IS MEASURED ON THE RECORDING ITSELF.
+#
+# These three presses exist for the firmware's own "Press any key to boot from CD or DVD" line, where
+# either key works. WHAT THEY ALSO REACH, ONCE SETUP IS RUNNING, IS A DIFFERENT MATTER: Escape is
+# Setup's Cancel shortcut, and MEASURED on run 45166271464 the recording carries the consequence from
+# t=60s onward -
+#
+#	Windows 11 Setup
+#	We're getting a few things ready
+#	  (!) Are you sure you want to quit?     [ Yes ]  [ No ]
+#
+# - a modal raised one minute in, sitting on top of the install for the ninety minutes the run lasted.
+# The desktop check answered `0.0000 similar` on all 5336 frames because the dialog was all there was.
+#
+# RETURN DOES NOT DO THAT. On "Press any key" it is the key the prompt is asking for, and on Setup's
+# own pages it activates the default control rather than Cancel - which is why the three presses are
+# `ret` here and were `esc` for as long as the dialog was blamed on something else.
 step "press a key so the loader takes it"
-  input esc
+  input ret
   settle 1
 
 
 step "press it again, because the prompt is emitted more than once"
-  input esc
+  input ret
   settle 1
 
 
 step "and once more, for a loader that was not listening yet"
-  input esc
+  input ret
   settle 2
 
 
