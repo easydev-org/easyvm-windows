@@ -1,0 +1,56 @@
+name: windows11iot-ltsc-install
+
+# WINDOWS 11 IOT ENTERPRISE LTSC (x64): INSTALL ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+#
+# ONE FILE, ONE FAMILY, NO MATRIX. Three tags in, one out, and nothing that depends on a sibling run.
+#
+# THIS MEDIUM IS THE REASON THE IMAGE SELECTOR IS READ INSTEAD OF TYPED. MEASURED: the IoT LTSC
+# evaluation medium carries ONE OR TWO images, so the consumer medium's index 6 - which is what every
+# Windows answer file in this project used to say - is OUT OF RANGE here, and Setup stops on its image
+# picker. `answer-win11iot-ltsc` is built by reading this medium's own install.wim and asking for the
+# image named "IoT Enterprise LTSC"; see scripts/build-answer.sh.
+#
+# THE PRODUCT KEY IS THE LTSC EVALUATION KEY, not the generic Pro key: the Pro key names an edition
+# this disc does not carry, and Setup then stops asking for one.
+#
+# THE WALK IS ltsc/, WHICH IS 11/'s SETUP WITH THIS MEDIUM: same Setup program, same "quit" wording in
+# its confirmation dialog, same TPM/Secure Boot bypasses because this build does check for them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks and media"
+        default: "easydev-org/easyvm-windows"
+
+concurrency:
+  group: windows11iot-ltsc-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  install:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "25"
+      group: windows11iot-ltsc-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows11iot-ltsc-install",
+            "file": "ltsc/steps/install.walk",
+            "pull": "",
+            "assets": ["iso-win11iot-ltsc:windows.iso.tar", "iso-virtio-win:virtio-win.iso.tar", "answer-win11iot-ltsc:answer.iso.tar"],
+            "out": "windows11iot-ltsc.qcow2",
+            "publish": "windows11iot-ltsc",
+            "timeout": 175
+          }
+        ]

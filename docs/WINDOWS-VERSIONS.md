@@ -2,12 +2,21 @@
 
 ## What is supported
 
-| family | architecture | ISO | walk directory | published tag |
-|---|---|---|---|---|
-| `win11` | x64 | `Win11_25H2_English_x64_v2.iso` | `11/` | `windows11` |
-| `win10` | x64 | `Win10_22H2_English_x64v1.iso` | `10/` | `windows10` |
-| `win11iot-ltsc` | x64 | `CLIENT_IOT_LTSC_EVAL_x64` | `ltsc/` | `windows11iot-ltsc` |
-| `win2025` | x64 | `SERVER_EVAL_x64FRE_en-us` | `2025/` | `windows2025` |
+| family | architecture | ISO | walk directory | install workflow | published tag |
+|---|---|---|---|---|---|
+| `win11` | x64 | `Win11_25H2_English_x64_v2.iso` | `11/` | `windows11-install.yml` | `windows11` |
+| `win10` | x64 | `Win10_22H2_English_x64v1.iso` | `10/` | `windows10-install.yml` | `windows10` |
+| `win11iot-ltsc` | x64 | `CLIENT_IOT_LTSC_EVAL_x64` | `ltsc/` | `windows11iot-ltsc-install.yml` | `windows11iot-ltsc` |
+| `win11iot-ltsc` | **arm64** | `CLIENT_IOT_LTSC_EVAL_A64FRE_en-us.iso` | `ltsc-arm64/` | `windows11iot-ltsc-arm64-install.yml` | — refuses |
+| `win2025` | x64 | `SERVER_EVAL_x64FRE_en-us` | `2025/` | `windows2025-install.yml` | `windows2025` |
+
+**EVERY INSTALL IS ITS OWN WORKFLOW FILE, AND NONE OF THEM HAS A MATRIX.** A dispatch runs one family;
+there is no `strategy:` anywhere in the five files and no `needs:` between them. The reason is that a
+matrix makes five unrelated installs look like one job - they share no artifact, no tag and no
+conviction - and a family that stops on a dialog it does not know should not be visible as a row that
+cancelled four others. `windows11iot-ltsc-arm64-install.yml` is the only one with a `needs:`, and it
+uses it to make its install UNSCHEDULABLE: the job it needs always fails, with the list of what the
+engine is missing.
 
 `scripts/fetch-windows-iso.py <family> [x64|arm64]` prints the URL for each, through Microsoft's own
 pages. It downloads nothing: the caller decides whether to fetch 5-8 GiB and where to put it.

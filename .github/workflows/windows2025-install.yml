@@ -1,0 +1,59 @@
+name: windows2025-install
+
+# WINDOWS SERVER 2025: INSTALL ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+#
+# ONE FILE, ONE FAMILY, NO MATRIX. Three tags in, one out, nothing that depends on a sibling run.
+#
+# SERVER'S MEDIUM NAMES ITS IMAGES INSTEAD OF NUMBERING THEM. Its installation media offers
+# "Windows Server 2025 SERVERSTANDARD" and "...SERVERDATACENTER", so `answer-win2025` selects by
+# /IMAGE/NAME and `scripts/build-answer.sh` resolves the FULL name out of the medium - never the query
+# that found it, because Setup compares that field for equality.
+#
+# THE DISK IS 40 GiB, NOT 25. Windows Server 2025's own requirement is 32 GiB, and a 25 GiB target
+# fails during the image apply with an error that names the volume rather than the budget.
+#
+# THE WALK IS 2025/, WHICH DIFFERS FROM 11/ IN ONE GATE THAT MATTERS: Server's windowsPE announces
+# itself as "Windows Server Setup", so the step waiting for the Setup window keys on `Windows Server`.
+# A gate written for the client builds would wait out its budget on a screen that is already up.
+#
+# NO TPM/SECURE BOOT BYPASSES: Server checks neither, so its answer CD omits the whole
+# <RunSynchronous> block rather than filling it with registry writes nothing reads.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks and media"
+        default: "easydev-org/easyvm-windows"
+
+concurrency:
+  group: windows2025-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  install:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "40"
+      group: windows2025-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows2025-install",
+            "file": "2025/steps/install.walk",
+            "pull": "",
+            "assets": ["iso-win2025:windows.iso.tar", "iso-virtio-win:virtio-win.iso.tar", "answer-win2025:answer.iso.tar"],
+            "out": "windows2025.qcow2",
+            "publish": "windows2025",
+            "timeout": 175
+          }
+        ]

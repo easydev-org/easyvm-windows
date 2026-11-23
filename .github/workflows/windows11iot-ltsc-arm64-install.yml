@@ -1,0 +1,109 @@
+name: windows11iot-ltsc-arm64-install
+
+# WINDOWS 11 IOT ENTERPRISE LTSC (ARM64): DISPATCHABLE, AND IT REFUSES UNTIL THE ENGINE HAS THE SHAPE.
+#
+# THIS FILE EXISTS BECAUSE THE FAMILY EXISTS, AND IT DOES NOT PRETEND TO WORK. It fails in its first
+# job with the list of what is missing, instead of starting a three-hour install that could not have
+# succeeded - which is the only useful thing a stage can do while its machine shape does not exist.
+#
+# WHAT IS ALREADY TRUE:
+#
+#	the ISO is resolvable      `scripts/fetch-windows-iso.py win11iot-ltsc arm64` answers
+#	                           CLIENT_IOT_LTSC_EVAL_A64FRE_en-us.iso, 5 042 194 432 bytes, verified
+#	the answer file is ready   the template takes `__ARCH__` and `PROFILES` carries `arch`, so an
+#	                           `arm64` profile renders eight `processorArchitecture="arm64"` sites
+#
+# WHAT IS NOT, AND ALL FIVE ARE THE ENGINE'S:
+#
+#	qemu-system-aarch64        internal/daemon/driver.go spawns `qemu-system-x86_64` BY NAME
+#	AAVMF firmware             Containerfile installs `qemu-system-x86` and `ovmf`; no qemu-efi-aarch64
+#	virtio-blk-device          every walk in this repository writes virtio-blk-pci
+#	an arm64 host for KVM      the runners are x86-64, where this is TCG - Windows Setup on TCG is
+#	                           not slow, it is unusable, and the install would time out rather than fail
+#	the walk                   ltsc/'s arguments describe an OVMF pc machine; an ARM64 guest needs
+#	                           `-machine virt`, AAVMF_CODE/AAVMF_VARS and virtio-blk-device
+#
+# SO `install` DEPENDS ON `refuse`, WHICH ALWAYS FAILS. That is deliberate: a job that is queued behind
+# a failed one never gets a runner, so a dispatch costs seconds and produces one sentence instead of a
+# cancelled three-hour leg. When the machine shape lands, this file changes in one place: `refuse` goes
+# away and `install` gains the `arm64/steps/install.walk` that was measured on it.
+#
+# DO NOT ADD ANOTHER ARM64 WINDOWS ROW. This is the only ARM64 Windows that a virtual machine can
+# install from: everything else on ARM64 is a VHDX (a disk, not a medium) or a Media Creation Tool.
+# See docs/WINDOWS-VERSIONS.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that would hold the disk and media"
+        default: "easydev-org/easyvm-windows"
+
+concurrency:
+  group: windows11iot-ltsc-arm64-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  refuse:
+    # THIS JOB'S WHOLE PURPOSE IS TO FAIL WITH THE REASON. It runs no container and needs no runner
+    # beyond the default, so the answer arrives in seconds.
+    runs-on: ubuntu-latest
+    steps:
+      - name: say what this stage is waiting for
+        run: |
+          set -eu
+          echo "::error::windows 11 IoT LTSC arm64 cannot be installed yet: this is a SECOND MACHINE"
+          echo "::error::SHAPE, and the engine has only the x86 one."
+          echo ""
+          echo "the engine spawns, by name:"
+          echo "    qemu-system-x86_64          internal/daemon/driver.go"
+          echo ""
+          echo "and the image it runs in installs:"
+          echo "    qemu-system-x86, ovmf       Containerfile - no qemu-efi-aarch64, no AAVMF"
+          echo ""
+          echo "what an ARM64 guest needs instead:"
+          echo "    qemu-system-aarch64         the emulator"
+          echo "    AAVMF_CODE / AAVMF_VARS     the firmware, in place of OVMF_CODE / OVMF_VARS"
+          echo "    -machine virt               in place of q35"
+          echo "    virtio-blk-device           in place of virtio-blk-pci, in every walk"
+          echo "    an arm64 host for KVM       the runners are x86-64, where this is TCG and Windows"
+          echo "                                Setup on TCG does not finish inside any budget"
+          echo ""
+          echo "already measured and ready:"
+          echo "    the ISO     fetch-windows-iso.py win11iot-ltsc arm64 ->"
+          echo "                CLIENT_IOT_LTSC_EVAL_A64FRE_en-us.iso, 5042194432 bytes"
+          echo "    the answer  the template takes __ARCH__ and PROFILES carries arch, so an arm64"
+          echo "                profile renders eight processorArchitecture=\"arm64\" sites"
+          echo ""
+          echo "see docs/WINDOWS-VERSIONS.md, section 'Why there is exactly one ARM64 image'."
+          exit 1
+
+  install:
+    # IT DEPENDS ON THE REFUSAL SO IT IS NEVER SCHEDULED. A caller that reads the job list sees the
+    # family exists; a caller that dispatches gets the sentence above and no wasted runner.
+    needs: [refuse]
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "25"
+      group: windows11iot-ltsc-arm64-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows11iot-ltsc-arm64-install",
+            "file": "ltsc-arm64/steps/install.walk",
+            "pull": "",
+            "assets": ["iso-win11iot-ltsc-arm64:windows.iso.tar", "iso-virtio-win-arm64:virtio-win.iso.tar", "answer-win11iot-ltsc-arm64:answer.iso.tar"],
+            "out": "windows11iot-ltsc-arm64.qcow2",
+            "publish": "windows11iot-ltsc-arm64",
+            "timeout": 175
+          }
+        ]

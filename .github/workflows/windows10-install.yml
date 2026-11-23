@@ -1,0 +1,60 @@
+name: windows10-install
+
+# WINDOWS 10 22H2: INSTALL ONTO A DISK THIS STAGE MAKES, AND PUBLISH IT.
+#
+# ONE FILE, ONE FAMILY, NO MATRIX. It references three tags by name and publishes one
+# (`windows10`), so it runs alone and cannot be affected by another family's run.
+#
+# WHAT DIFFERS FROM 11/, AND WHY THIS FILE STILL EXISTS AS ITS OWN FILE:
+#
+#	the walk gates the quit dialog on `sure` instead of `quit`   Windows 10's Setup is reported to
+#	                                                             read "...to exit?"; see 10/steps/install.walk
+#	the answer CD is `answer-win10`                              a product key SELECTS an edition, and
+#	                                                             this medium carries 11 images
+#	NO TPM/Secure Boot bypasses                                  Windows 10 checks neither, so the block
+#	                                                             is absent from the CD rather than empty
+#	the budget is 150 minutes instead of 175                     no TPM or Secure Boot pages, no OOBE
+#	                                                             account flow
+#
+# THE MEDIUM'S URL IS MINTED AT PUBLISH TIME, NOT WRITTEN HERE. Windows 10's connector answer is a
+# signed link that expires in a day; artifacts-publish.yml resolves it in the job that downloads it,
+# and this file only names the tag.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks and media"
+        default: "easydev-org/easyvm-windows"
+
+concurrency:
+  group: windows10-install
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  install:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "25"
+      group: windows10-install
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows10-install",
+            "file": "10/steps/install.walk",
+            "pull": "",
+            "assets": ["iso-win10:windows.iso.tar", "iso-virtio-win:virtio-win.iso.tar", "answer-win10:answer.iso.tar"],
+            "out": "windows10.qcow2",
+            "publish": "windows10",
+            "timeout": 150
+          }
+        ]

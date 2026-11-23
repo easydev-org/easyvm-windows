@@ -21,13 +21,24 @@ scripts/build-answer.py --profile <family> ...
 scripts/build-answer.sh <family> <iso> <virtio.iso> <out.iso>   # the two joined
 ```
 
-`windows-install.yml` - one file, a matrix of four families. A family can be installed on its own by
-re-running its job:
+**One workflow file per family, and no matrix anywhere.** Each names its own media and publishes its
+own tag, so a dispatch runs exactly one install and nothing else can affect it:
 
 ```sh
-gh workflow run windows-install.yml -f family=win10
-gh run rerun <run-id> --job <the family's job>
+gh workflow run windows11-install.yml
+gh workflow run windows10-install.yml
+gh workflow run windows11iot-ltsc-install.yml
+gh workflow run windows2025-install.yml
+gh workflow run windows11iot-ltsc-arm64-install.yml   # refuses: the engine has no ARM64 shape yet
 ```
+
+| file | walk | publishes |
+|---|---|---|
+| `windows11-install.yml` | `11/` | `windows11` |
+| `windows10-install.yml` | `10/` | `windows10` |
+| `windows11iot-ltsc-install.yml` | `ltsc/` | `windows11iot-ltsc` |
+| `windows2025-install.yml` | `2025/` | `windows2025` |
+| `windows11iot-ltsc-arm64-install.yml` | `ltsc-arm64/` | (refuses, with a list of what is missing) |
 
 ## What makes these guests different
 

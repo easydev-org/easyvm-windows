@@ -1,8 +1,8 @@
 name: windows-smoke
 
-# DOES THE PUBLISHED DISK START? Boot it, record three minutes, kill it.
+# DOES A PUBLISHED WINDOWS DISK START? Boot it, record three minutes, kill it.
 #
-# THIS IS THE CLAIM THE INSTALL LEG CANNOT MAKE. A walkthrough can answer every one of its steps and
+# THIS IS THE CLAIM AN INSTALL LEG CANNOT MAKE. A walkthrough can answer every one of its steps and
 # still publish a disk no firmware will boot - MEASURED on android blissos 16.9.7, whose install ended
 # with "Congratulations!" and whose disk printed
 #
@@ -12,24 +12,48 @@ name: windows-smoke
 #
 # IT PUBLISHES NO DISK. `out:` is empty in the stage below, so `stage.yml` reports "no disk to
 # publish (the stage may not write one)" and the only artifact is the recording - which is what a
-# person watches after a failure. The disk it verifies is the one the install leg already published.
+# person watches after a failure. The disk it verifies is the one an install leg already published.
 #
 # SO THIS IS SAFE TO RUN AT ANY TIME: it reads a tag and writes nothing, and two runs cannot
 # overwrite each other's work.
+#
+# THE WALK IS SHARED BY EVERY X64 FAMILY, AND THAT IS CORRECT RATHER THAN LAZY: smoke.walk asks the
+# CONSOLE one question - `BdsDxe: starting` - and reads nothing from the picture, so it is the same
+# claim for 11, 10, LTSC and 2025. `from_walk:` names which family's copy to run, because a walk's
+# `work` directory is resolved beside the FILE and the four copies are identical by construction.
+#
+# IT IS NOT MATRIXED, BY REQUEST: one dispatch, one family. `from_walk` is a choice input, so a run
+# names exactly one directory and nothing else is touched.
 
 on:
   workflow_dispatch:
     inputs:
       from_tag:
         description: >-
-          the PUBLISHED disk to boot. Empty uses the tag this repository's install leg publishes.
+          the PUBLISHED disk to boot
         default: "windows11"
+      from_walk:
+        description: "which family's smoke walk to run; the four copies are identical"
+        type: choice
+        options:
+          - "11"
+          - "10"
+          - "ltsc"
+          - "2025"
+        default: "11"
+      disk_gb:
+        description: >-
+          the disk the published image is written into. 25 for the clients, 40 for Server - the tag
+          and the size are one fact, so a Server disk booted with 25 GiB reports a bad volume.
+        default: "25"
       disks_repository:
         description: "the ghcr repository that holds the disk"
         default: "easydev-org/easyvm-windows"
 
 concurrency:
-  group: windows-smoke
+  # KEYED ON THE TAG, so two families can be smoke-tested at once and a re-run of one cancels only
+  # itself. A group keyed on the workflow alone would serialise runs that share nothing.
+  group: windows-smoke-${{ inputs.from_tag }}
   cancel-in-progress: true
 
 permissions:
@@ -44,14 +68,14 @@ jobs:
     with:
       image_repository: easydev-org/easyvm
       image_tag: v0.0.3-dev
-      disk_gb: "25"
-      group: windows-smoke
+      disk_gb: ${{ inputs.disk_gb }}
+      group: windows-smoke-${{ inputs.from_tag }}
       disks_repository: ${{ inputs.disks_repository }}
       stages: |
         [
           {
-            "name": "windows11-smoke",
-            "file": "11/steps/smoke.walk",
+            "name": "${{ inputs.from_tag }}-smoke",
+            "file": "${{ inputs.from_walk }}/steps/smoke.walk",
             "pull": "${{ inputs.from_tag }}",
             "out": "",
             "timeout": 20
