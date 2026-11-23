@@ -75,6 +75,36 @@ step "and once more, for a loader that was not listening yet"
   settle 2
 
 
+# THE FIRMWARE'S OWN BOOT MENU IS A STOPPING POINT, AND WINDOWS 10 LANDS ON IT EVERY TIME.
+#
+# MEASURED on run 45224577194, whose recording is 3633 frames and whose frame at t=600 AND at t=3500
+# are the SAME PICTURE:
+#
+#	Please select boot device:
+#	  UEFI QEMU DVD-ROM QM00011          <- highlighted
+#	  UEFI Misc Device
+#	  UEFI QEMU QEMU USB HARDRIVE 1-0000:00:03.0-3
+#	  UEFI QEMU QEMU USB HARDRIVE 1-0000:00:03.0-4.1
+#	  EFI Firmware Setup / EFI Internal Shell / UEFI PXEv4 / PXEv6 / HTTPv4 / HTTPv6
+#	  up and down to move selection / ENTER to select boot device / ESC to exit
+#
+# Sixty minutes on a menu. THE THREE `ret` PRESSES ABOVE NEVER REACHED IT: they are sent in the first
+# four seconds, while the firmware is still printing, and the menu appears after them. The successful
+# Windows 11 run does not show this menu at all - its OVMF picked the DVD unaided - which is why the
+# walk has never needed to answer one.
+#
+# SO THE MENU IS ANSWERED WHEN IT IS ACTUALLY UP, and `ret` is the key its own footer names ("ENTER to
+# select boot device"). The step is gated on the footer's words, so a firmware that boots straight
+# through - as on 11 - is not typed into.
+step "the firmware is asking which device to boot, if it is"
+  input ret
+  settle 5
+  rect [0, 380, 1920, 700]
+  rect_at [1920, 1080]
+  scale 1
+  when [select, boot, device]
+
+
 step "Setup is on screen"
   repeat
     do
