@@ -137,6 +137,7 @@ jobs:
           echo "path=$path" >> "$GITHUB_OUTPUT"
 
       - name: pack into a tar
+        if: steps.wanted.outputs.wanted == 'yes'
         # EVERY PUBLISHED ASSET IS ONE TAR, AND THIS IS WHERE THAT STARTS.
         #
         # A LEG HAS ONE WAY TO PREPARE ITS WORK DIRECTORY: pull the named artifact, unpack it, delete
