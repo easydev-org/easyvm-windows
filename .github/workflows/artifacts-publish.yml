@@ -253,12 +253,30 @@ jobs:
           fi
           ls -l "$GITHUB_WORKSPACE/work/answer.iso"
 
+      - name: pack the answer CD into the tar the engine unpacks
+        # ONE TAG, ONE TAR, BECAUSE THE ENGINE'S `fetchAnswerISO` UNPACKS IT.
+        #
+        # `internal/asset/fetchAnswerISO` calls `pullTag` then `untar` and then stats
+        # `<work>/answer.iso`. MEASURED on windows install, run 45107985436: this job used to push the
+        # bare ISO, the engine pulled it into `answer-cd.tar`, `untar` found no member names it could
+        # restore, and the stage failed with
+        #
+        #	answer-windows11 did not unpack answer.iso: stat .../work/answer.iso: no such file
+        #
+        # The macOS firmware artifact has the same shape for the same reason - `oci-push` mirrors ONE
+        # file, so the file it mirrors is the archive the consumer unpacks.
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          tar -cf answer-cd.tar answer.iso
+          ls -l answer-cd.tar
+
       - name: push answer-windows11
-        # ONE TAG, ONE ISO. The engine pulls it by this name and copies it to the work directory, so
-        # renaming one without the other is a stage that finds no answer file.
+        # THE NAME THE ENGINE PULLS IS `answer-windows11`, from `answerTag`. Renaming one without the
+        # other is a stage that finds no answer file.
         uses: easydev-org/easyactions/oci-push@main
         with:
-          path: ${{ github.workspace }}/work/answer.iso
+          path: ${{ github.workspace }}/work/answer-cd.tar
           tag: answer-windows11
           repository: ${{ inputs.disks_repository || github.repository }}
           media-type: application/vnd.easydev.artifact
