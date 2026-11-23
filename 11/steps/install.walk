@@ -79,7 +79,12 @@ step "and once more, for a loader that was not listening yet"
 
 step "Setup is on screen"
   repeat
-    pause 5
+    do
+      item
+        settle 5
+      item "read the screen"
+        read
+          name screen
     until
       bind done
       source screen
