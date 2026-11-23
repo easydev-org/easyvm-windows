@@ -47,7 +47,7 @@ jobs:
       image_repository: easydev-org/easyvm
       image_tag: v0.0.3-dev
       disk_gb: "40"
-      group: windows
+      group: windows-dev
       disks_repository: ${{ inputs.disks_repository }}
       stages: |
         [
