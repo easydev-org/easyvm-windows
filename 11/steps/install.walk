@@ -309,10 +309,28 @@ step "the screen is the one this file was written against"
     reference reference/desktop.png
 
 
+# THE MACHINE THAT INSTALLED IS STILL RUNNING, AND A SECOND BOOT NEEDS IT GONE FIRST.
+#
+# MEASURED on run 45184022059, which reached step 18 and stopped there:
+#
+#	reboot into the installed system: this machine is already running with different qemu
+#	arguments. One daemon holds one machine, so a boot that describes another one needs a
+#	`stop:` first - otherwise the steps below drive the guest the earlier boot started
+#
+# The installer's machine is what has been running since step 3; this step describes a DIFFERENT one
+# - no ISO, the disk at bootindex=0 with discard=unmap - so the daemon refuses rather than silently
+# driving the old guest. `stop kill` is right here because the install has already reported success
+# and the desktop has been checked: nothing is left to lose, and ACPI would ask a machine that is
+# sitting at the Windows desktop to shut down politely, which it may refuse.
+step "power the installer's machine off, because the next boot describes another one"
+  stop kill
+  timeout 120
+
+
 step "reboot into the installed system"
   boot
     machine "q35,accel=kvm,vmport=off"
-    args [["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
     timeout 900
 step "the installed system reaches a desktop"
   repeat
