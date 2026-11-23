@@ -224,7 +224,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/work"
           cd "$GITHUB_WORKSPACE/work"
           sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
-            "${{ inputs.disks_repository || github.repository }}" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
             iso-virtio-win virtio-win.iso
           ls -l virtio-win.iso
 
