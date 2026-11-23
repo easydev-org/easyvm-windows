@@ -195,8 +195,11 @@ step "answer it again, if it came back"
 # The screen in the recording shows `No` with a focus rectangle, so ENTER is what dismisses it. An
 # `esc` here does nothing at all - which is why the two steps above never cleared it, and why the
 # desktop never appeared while the guest sat waiting behind a question nobody answered.
-step "dismiss the quit dialog with the focus that is already on No"
-  input ret
+step "dismiss the quit dialog by clicking its No button"
+  # A CLICK AT THE BUTTON, FOR THE SAME REASON THE LOOP BELOW USES ONE: a keystroke goes to whatever
+  # the page focuses, and the page under an install in progress focuses its own Cancel.
+  input
+    click [1035, 620]
   settle 3
   rect [820, 460, 1520, 660]
   rect_at [1920, 1080]
@@ -232,17 +235,39 @@ step "wait for the desktop"
   # ninety minutes. Answering it here costs one keystroke per round and needs no new step.
   repeat
     do
-      item "clear any quit dialog before looking at the screen"
-        # A BARE `ret` WOULD PRESS WHATEVER HAS FOCUS ONCE THE DESKTOP IS UP, so the keystroke is
-        # gated on the dialog's own words. `when:` reads the frame the previous round captured, which
-        # is the one place this loop already has.
-        input ret
-        settle 1
+      # THE FRAME IS READ FIRST, AND THE KEY IS PRESSED ONLY IF THAT FRAME SAYS `quit`.
+      #
+      # MEASURED on run 45194828845, t=300s: the screen was
+      #
+      #	Installing Windows 11        18% complete        [ Cancel ]
+      #	        +------------------------------------------+
+      #	        |  (!) Are you sure you want to quit?       |
+      #	        |     [ Yes ]   [ No ]   <- No has the focus |
+      #	        +------------------------------------------+
+      #
+      # and the loop read `0.0000 similar` for sixty-three minutes. The order in the old `do:` was
+      # `input ret` and THEN the gate - so on the very first round, with no previous frame to read,
+      # the key went to whatever the 18% page had focused, which is its own `Cancel`. That raised the
+      # dialog; the next round's `ret` pressed `No`; the round after that pressed `Cancel` again. A
+      # loop that could only ever stay on the dialog it was trying to dismiss.
+      item "read the screen before touching the keyboard"
+        read
+          name screen
+      item "dismiss the quit dialog, but only if this frame is one"
+        # THE POINT IS THE `No` BUTTON ITSELF, NOT A KEYSTROKE. MEASURED from the same frame: the dialog
+        # spans x 835..1102, y 495..652, and `No` is the right-hand button at about x 1035, y 620.
+        #
+        # `ret` WOULD ALSO WORK WHEN `No` HAS THE FOCUS - and it does, in that dialog - but a keystroke
+        # is sent to whatever the page focuses, and the page underneath an install in progress focuses
+        # its own `Cancel`. A click at a coordinate is the one thing that cannot be redirected.
+        input
+          click [1035, 620]
+        settle 3
         rect [820, 460, 1520, 660]
         rect_at [1920, 1080]
         scale 2
         when [quit]
-      item
+      item "re-read, because the keystroke may have changed the page"
         read
           name screen
     until
