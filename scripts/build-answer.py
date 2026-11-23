@@ -348,10 +348,24 @@ def extract_drivers(virtio_iso, stage):
             break
 
     if not found:
+        # THE DIAGNOSIS IS IN THE MESSAGE, BECAUSE THIS FAILURE HAS THREE POSSIBLE CAUSES AND THEY ARE
+        # INDISTINGUISHABLE FROM THE SENTENCE ABOVE. It was "the medium is not readable" twice and
+        # "the extraction wrote nothing" once, and each needed a different fix.
+        want = [f"{d}/{v}/amd64" for d in DRIVERS for v in DRIVER_VERSIONS]
+        present = [w for w in want if any(m.lower() == w.lower() for m in members)]
+        wrote = sorted(members_written(winpe))
         raise SystemExit(
-            f"no drivers were extracted from {virtio_iso}. Looked for {DRIVERS} under "
-            f"{'/'.join(DRIVER_VERSIONS)}/amd64. Without viostor, windowsPE cannot see the virtio "
-            f"disk and Setup stops at a dialog nobody clicks")
+            "no drivers were extracted from %s.\n"
+            "  7z: %s\n"
+            "  members listed: %d\n"
+            "  the directories it was asked for, and whether the medium has them:\n%s\n"
+            "  what the extraction actually wrote (%d file(s)):\n%s\n"
+            "  Without viostor, windowsPE cannot see the virtio disk and Setup stops at a dialog "
+            "nobody clicks"
+            % (virtio_iso, seven_zip_version(), len(members),
+               "\n".join("    %-24s %s" % (w, "present" if w in present else "ABSENT") for w in want),
+               len(wrote),
+               "\n".join("    " + w for w in wrote[:12]) or "    (nothing)"))
     return found
 
 
