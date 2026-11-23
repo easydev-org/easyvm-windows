@@ -110,6 +110,27 @@ step "and once more, for a loader that was not listening yet"
 # THIS IS THE SAME DEFECT AS fedora's login prompt, in a different walk: a gate that can look at one
 # frame cannot express "wait for this, then act". It is a loop now - wait for the footer's own words,
 # press Return, and let the step after this one check that Setup came up.
+# THE READ HAS TO LOOK AT THE WHOLE SCREEN, AND IT HAS TO WAIT LONGER THAN THE PROMPT ABOVE.
+#
+# MEASURED on run 45236392481's own fix attempt (the loop version): it failed at this step with
+#
+#	the firmware is asking which device to boot [until]: __until__ = false (none of "select boot
+#	device" in "")
+#	see: 0 word(s):
+#
+# A REGION READING ZERO WORDS IS `""`, AND `""` NEVER CONTAINS THE WORDS. The rect was
+# [0, 380, 1920, 700] - a band chosen from the menu's position in a RECORDING, where the menu is drawn
+# at y 370..710 - but between the DVD-ROM line appearing on the console (what the step above waits for)
+# and the menu being drawn, this guest shows a BLACK screen. A band that is black reads nothing, and a
+# loop whose condition can never become true runs out its budget.
+#
+# SO THE REGION IS THE WHOLE FRAME. The words "select boot device" appear only on this menu, so the
+# whole screen is not a looser question - it is the same question asked of everything visible, which is
+# what a firmware screen deserves.
+#
+# AND THE BUDGET IS LONGER THAN THE STEP ABOVE'S. `wait for the firmware to offer the DVD` returns when
+# the CONSOLE prints a DVD-ROM line, which can be minutes before the menu is drawn on the video side;
+# five minutes was measured against the wrong moment.
 step "the firmware is asking which device to boot"
   repeat
     do
@@ -120,11 +141,11 @@ step "the firmware is asking which device to boot"
       bind asking
       source firmware
       mode text
-      rect [0, 380, 1920, 700]
+      rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device]]
-    max 60
+      words [[select, boot, device], [Boot, Manager]]
+    max 180
     pause 5
 
 
