@@ -378,9 +378,16 @@ jobs:
         # input to the INSTALL; now the image index comes out of it, so a family whose medium is absent
         # cannot produce a correct answer file and must fail here rather than at Setup.
         #
-        # THE TAG NAMES THE ISO ROW, whose `description` says what file it is. `pull-artifact.sh`
-        # writes it as `windows.iso` - the name a walk's `needs:` uses - so the build reads the same
-        # bytes the leg will install from.
+        # WHAT IS PULLED IS A TAR, NOT AN ISO. Every published asset is one archive holding one file -
+        # that is the shape `stage.yml` unpacks for every leg - and `pull-artifact.sh` moves the
+        # registry's blob and nothing else. MEASURED on run 45218049910: this step wrote the 6.1 GB tar
+        # straight to `windows.iso`, `7z` then listed one member called `iso-win10` (the tag, which is
+        # what `mirror-one.sh` names the file before packing it), and the build refused with
+        #
+        #	windows.iso: no sources/install.wim ... its members are: iso-win10
+        #
+        # So the unpack is here, and it is the same rule `stage.yml` applies: unpack, delete the
+        # archive, and rename the one file that came out to the name the rest of the job uses.
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -388,8 +395,25 @@ jobs:
           cd "$GITHUB_WORKSPACE/work"
           sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
             ghcr.io "${{ inputs.disks_repository || github.repository }}" \
-            "${{ matrix.answer.medium }}" windows.iso
+            "${{ matrix.answer.medium }}" medium.tar
+          echo "=== the archive is $(stat -c %s medium.tar) bytes"
+          before=$(mktemp); ls -1 . > "$before"
+          tar -xf medium.tar
+          rm -f medium.tar
+          # THE ONE FILE THE ARCHIVE ADDED IS THE ISO. Named from the listing rather than assumed,
+          # because the member is whatever the publisher called it before packing - `iso-win10` for
+          # this row - and the job needs one stable name afterwards.
+          added=$(ls -1 | grep -vxF -f "$before" | head -2)
+          n=$(printf '%s\n' "$added" | grep -c . || true)
+          [ "$n" = "1" ] || {
+            echo "::error::${{ matrix.answer.medium }} unpacked to $n new entries, not one:"
+            printf '  %s\n' $added
+            exit 1
+          }
+          mv "$added" windows.iso
+          rm -f "$before"
           ls -l windows.iso
+          echo "=== volume id: $(dd if=windows.iso bs=1 skip=$((16*2048+40)) count=32 2>/dev/null | tr -d '\0')"
 
       - name: build the answer CD for this family, reading its image table
         if: steps.wanted.outputs.wanted == 'yes'
