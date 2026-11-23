@@ -29,6 +29,14 @@ var user
   from args.user
 boot_disk from_caller
 ssh_port 2222
+# THE AGENT AND ITS DRIVER ARRIVE ALREADY EXTRACTED FROM THE virtio-win ISO. This used to be a
+# `fetch: guest_agent_windows` step that ran `7z` against the ISO inside the walkthrough; the leg now
+# pulls `virtio-agent.tar` and the engine unpacks it, so a truncated pull fails HERE rather than at a
+# `copy` twenty steps later.
+step "the agent and its driver are on disk"
+  needs [qemu-ga-x86_64.msi, vioserial/vioser.inf, vioserial/vioser.sys, vioserial/vioser.cat]
+
+
 step "boot the disk"
   boot
   # A FIXED SIZE FOR EVERY GUEST OF THIS FAMILY: see the header comment.
@@ -61,10 +69,6 @@ step "wait for sshd"
     max 90
     pause 10
 
-
-step "unpack the agent and its driver from the prepared ISO"
-  fetch guest_agent
-  os windows
 
 
 step "copy the driver in"

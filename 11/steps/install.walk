@@ -28,9 +28,6 @@ step "create the empty disk"
   disk_gb 128
 
 
-step "the answer CD this guest installs with"
-  fetch answer_iso
-
 
 step "boot the installer"
   boot

@@ -282,3 +282,84 @@ jobs:
           media-type: application/vnd.easydev.artifact
           token: ${{ github.token }}
           check-name: answer-windows11
+
+  # THE AGENT'S MSI AND ITS DRIVER, UNPACKED FROM THE virtio-win ISO AND PUBLISHED AS ONE TAR.
+  #
+  # THIS EXISTS BECAUSE THE ENGINE NO LONGER EXTRACTS ANYTHING. A `fetch: guest_agent_windows` step
+  # used to pull the ISO and run `7z` on four members inside the walkthrough - which put "how to
+  # prepare a file" in the engine, in a second place beside the leg's own `assets:`. The engine now
+  # pulls a tar and unpacks it, and that is all it does; what goes in the tar is decided here.
+  #
+  # THE FOUR MEMBERS COME FROM ONE PLACE, AND EACH IS NAMED BY A MEASUREMENT:
+  #
+  #	guest-agent/qemu-ga-x86_64.msi    the agent itself
+  #	vioserial/w10/amd64/vioser.inf    the driver's declaration
+  #	vioserial/w10/amd64/vioser.sys    what binds the device
+  #	vioserial/w10/amd64/vioser.cat    what lets Windows accept the signature
+  #
+  # THE .inf ALONE DECLARES A DEVICE WHOSE DRIVER IS NOWHERE, and `pnputil /add-driver` then fails
+  # inside the guest with a message about the catalogue rather than about the missing file.
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+      checks: write
+    if: github.event_name != 'workflow_dispatch' || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'windows'))
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: the tools the build needs
+        run: |
+          set -eu
+          sudo apt-get update -qq
+          # `7z` reads the Joliet tree the drivers live in. A hand-written reader produces 8.3 names
+          # that do not match the driver the walkthrough copies.
+          sudo apt-get install -y -qq p7zip-full
+
+      - name: pull the virtio-win ISO
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p "$GITHUB_WORKSPACE/work"
+          cd "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            iso-virtio-win virtio-win.iso
+          ls -l virtio-win.iso
+
+      - name: extract the agent and its driver
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          mkdir -p vioserial
+          7z e -y -o. virtio-win.iso guest-agent/qemu-ga-x86_64.msi
+          7z e -y -ovioserial virtio-win.iso \
+            vioserial/w10/amd64/vioser.inf \
+            vioserial/w10/amd64/vioser.sys \
+            vioserial/w10/amd64/vioser.cat
+          # 7Z EXITS ZERO WHEN A MEMBER IS ABSENT IN SOME VERSIONS, so each file is checked rather
+          # than trusted - a tar of three files and a missing MSI is a guest with no agent.
+          for f in qemu-ga-x86_64.msi vioserial/vioser.inf vioserial/vioser.sys vioserial/vioser.cat; do
+            [ -s "$f" ] || { echo "::error::the ISO has no $f"; exit 1; }
+            ls -l "$f"
+          done
+
+      - name: pack them into one tar
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          tar -cf virtio-agent.tar qemu-ga-x86_64.msi vioserial
+          ls -l virtio-agent.tar
+
+      - name: push virtio-agent
+        uses: easydev-org/easyactions/oci-push@main
+        with:
+          path: ${{ github.workspace }}/work/virtio-agent.tar
+          tag: virtio-agent
+          repository: ${{ inputs.disks_repository || github.repository }}
+          media-type: application/vnd.easydev.artifact
+          token: ${{ github.token }}
+          check-name: virtio-agent

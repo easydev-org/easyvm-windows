@@ -71,7 +71,9 @@ jobs:
             "name": "windows-install",
             "file": "11/steps/install.walk",
             "pull": "",
-            "assets": ["iso-windows11:windows.iso", "iso-virtio-win:virtio-win.iso"],
+            # THE ANSWER CD IS BUILT AND PUBLISHED BY `artifacts-publish.yml`'s `answer` job, from
+            # the virtio-win ISO, because it carries the drivers Setup needs to see the disk.
+            "assets": ["iso-windows11:windows.iso.tar", "iso-virtio-win:virtio-win.iso.tar", "answer-windows11:answer.iso.tar"],
             "out": "windows11.qcow2",
             "publish": "windows11",
             "timeout": 175
@@ -126,6 +128,10 @@ jobs:
             "name": "windows-vm-configure",
             "file": "11/steps/vm-configure.walk",
             "pull": "windows11-ssh",
+            # THE AGENT AND ITS DRIVER, ALREADY EXTRACTED FROM THE virtio-win ISO BY
+            # `artifacts-publish.yml`'s `agent` job. The engine used to run `7z` on the ISO itself,
+            # which put "how to prepare a file" inside a walkthrough.
+            "assets": ["virtio-agent:virtio-agent.tar"],
             "out": "windows11-vm-configure.qcow2",
             "publish": "windows11-vm-configure",
             "timeout": 60
