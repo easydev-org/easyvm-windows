@@ -31,26 +31,9 @@ step "create the empty disk"
 
 step "boot the installer"
   boot
-  answer_cd answer.iso
-  driver_cd virtio-win.iso
-  iso windows.iso
-  # FOUR GIBABYTES IS THE ENGINE'S DEFAULT AND IT IS NOT ENOUGH FOR WHAT WINDOWS DOES AFTER THE
-  # INSTALL. MEASURED across two runs that both sat on the same frame for the whole budget:
-  #
-  #	Please keep your computer on. Your computer may restart a few times.
-  #
-  # with `Select C:\WINDOWS\SYSTEM32\netsh.exe` over it, `ratio=0.1x` and `sat=+0.07` - a screen
-  # that never changed for 90 and then 120 minutes. The console log shows the boot loader handing
-  # over to Windows Boot Manager and nothing after it, so the guest is running and its first-boot
-  # work is not finishing.
-  #
-  # EIGHT IS WHAT THIS GUEST'S OWN STAGES ASK FOR: `ssh` and `vm-configure` both boot with the
-  # default and only need sshd, while the install is the one that runs the OOBE.
-  memory_mb 12288
-  os windows
-  timeout 1800
-
-
+    machine "q35,accel=kvm,vmport=off"
+    args [["-m", "12288"], ["-chardev", "socket,id=qga0,path={{work}}/qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file={{iso}},media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bootindex=0"], ["-drive", "file={{answer}},media=cdrom,readonly=on,if=none,id=media1"], ["-device", "usb-storage,bus=xhci.0,drive=media1"], ["-drive", "file={{disk}},if=none,format=qcow2,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=1"], ["-drive", "file={{driver}},media=cdrom,readonly=on,if=none,id=media2"], ["-device", "usb-storage,bus=xhci.0,drive=media2"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    timeout 1800
 step "wait for the firmware to offer the DVD"
   until DVD-ROM
   blind_after 60
@@ -277,10 +260,9 @@ step "the screen is the one this file was written against"
 
 step "reboot into the installed system"
   boot
-  os windows
-  timeout 900
-
-
+    machine "q35,accel=kvm,vmport=off"
+    args [["-chardev", "socket,id=qga0,path={{work}}/qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file={{disk}},if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    timeout 900
 step "the installed system reaches a desktop"
   repeat
     do
