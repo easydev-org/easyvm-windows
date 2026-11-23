@@ -65,7 +65,7 @@ IDENTITY = {
 #	product key        Windows 11 Pro's generic install key selects Professional from a consumer
 #	                   medium. The SAME key on an LTSC medium selects nothing - the edition it names
 #	                   is not on the disc - and Setup stops asking for one. dockur/windows ships a
-#	                   different key per family (M7XTQ-... for 11 LTSC, CGK42-... for 11 IoT,
+#	                   different key per family (CGK42-... for 11 IoT LTSC, M7XTQ-... for plain 11 LTSC,
 #	                   TVRH6-... for Server 2025) for exactly this reason.
 #	labconfig          The TPM/SecureBoot bypasses exist because OVMF_CODE_4M.fd has no Microsoft
 #	                   keys. Windows 10 DOES NOT CHECK for either, and writes to LabConfig that
@@ -97,10 +97,26 @@ PROFILES = {
         "select": "index",
     },
     "win11iot-ltsc": {
-        # THE LTSC EVALUATION KEY, from Microsoft's own Evaluation Center page: `M7XTQ-FN8P6-TTKYV-9D4CC-J462D`.
-        # A retail/KMS key cannot select an evaluation image, and the Pro key above selects nothing on
-        # this medium at all.
-        "key": "M7XTQ-FN8P6-TTKYV-9D4CC-J462D",
+        # THE **IoT** LTSC KEY, WHICH IS NOT THE LTSC KEY, AND THE DIFFERENCE COST A RUN.
+        #
+        # MEASURED on run 9195696's ltsc leg: Setup came up, applied nothing, and drew
+        #
+        #	Windows 11 Setup
+        #	Windows installation encountered an unexpected error.
+        #	Error code: 0x0000A000 - 0x40031
+        #
+        # 0x40031 IS THE EDITION MISMATCH. The medium this repository mirrors carries exactly one image,
+        # and its FLAGS read
+        #
+        #	1   Windows 11 IoT Enterprise LTSC 2024 Evaluation   IoTEnterpriseSEval
+        #
+        # - the IoT EVALUATION edition. `M7XTQ-FN8P6-TTKYV-9D4CC-J462D` is the key for Windows 11
+        # ENTERPRISE LTSC (no "IoT"), which is a different SKU on a different disc, so Setup found a key
+        # that named an edition the medium does not carry and stopped.
+        #
+        # dockur/windows keeps the two apart for exactly this reason: `win11x64-ltsc` uses M7XTQ and
+        # `win11x64-iot` uses CGK42-GYN6Y-VD22B-BX98W-J8JXD. THIS FAMILY IS THE IoT ONE.
+        "key": "CGK42-GYN6Y-VD22B-BX98W-J8JXD",
         "want": "IoT Enterprise LTSC",
         "arch": "amd64",
         "labconfig": True,
