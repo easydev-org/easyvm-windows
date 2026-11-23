@@ -131,27 +131,50 @@ step "and once more, for a loader that was not listening yet"
 # AND THE BUDGET IS LONGER THAN THE STEP ABOVE'S. `wait for the firmware to offer the DVD` returns when
 # the CONSOLE prints a DVD-ROM line, which can be minutes before the menu is drawn on the video side;
 # five minutes was measured against the wrong moment.
-step "the firmware is asking which device to boot"
+# THE MENU IS ONE OF TWO THINGS THAT CAN HAPPEN HERE, AND THIS STEP HAS TO ACCEPT BOTH.
+#
+# THREE ATTEMPTS AT THIS ONE STEP, EACH LEARNING SOMETHING:
+#
+#	run 45224577194 / 45224586593   the menu was on screen for the WHOLE hour, unanswered
+#	run 45236392481 (fix 1)         `when:` read the previous frame, so the step was SKIPPED
+#	run 45236392481 (fix 2)         a 320-pixel band read a black frame: `see: 0 word(s)`
+#	this run (fix 3)                `see: 3 word(s): Setup Is starting`
+#
+# THAT LAST ONE IS THE ANSWER. OVMF pointed the DVD at itself and Setup started - the menu never
+# appeared at all. The two boards that showed the menu and the ones that did not are the SAME OVMF and
+# the same argument list, so the difference is timing rather than configuration: a firmware that offers
+# a menu the first time and boots straight through the next is not something a walk can predict.
+#
+# SO THIS STEP ENDS ON EITHER OUTCOME. `until` takes one word-set list, and `Setup Is starting` is added
+# to it: if the menu is there the loop presses Return, and if Setup is already up the loop stops without
+# touching the keyboard. The step after this one waits for Setup's own window, so a Return pressed where
+# it was not needed is caught there rather than silently confusing the run.
+step "the firmware is either asking which device to boot, or already loading Setup"
   repeat
     do
       item "read the screen"
         read
           name firmware
     until
-      bind asking
+      bind resolved
       source firmware
       mode text
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device], [Boot, Manager]]
+      # EITHER OUTCOME IS A REASON TO STOP WAITING. The menu's footer, or the first words Setup prints
+      # once the medium has been chosen - both mean "the firmware has done its job".
+      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files]]
     max 180
     pause 5
 
 
-step "press Return on the highlighted DVD"
+step "answer the menu, if there is one"
   input ret
   settle 15
+  # THE KEY IS ONLY SENT WHEN THE MENU IS THE THING ON SCREEN. Ungated, it would land on Setup's own
+  # first page, whose default control is not always "continue".
+  when [select, boot, device]
 
 
 step "Setup is on screen"
