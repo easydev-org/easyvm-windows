@@ -1,0 +1,62 @@
+name: windows
+
+# windows, AS A CHAIN OF JOBS THAT DEPEND ON EACH OTHER.
+#
+# THE LEGS USED TO RUN AS ONE PARALLEL MATRIX, and that produced a race with a timeout for a tail: a leg
+# asks for the tag the leg before it publishes, gets a 404 because that leg is still running, falls back
+# to the INSTALL disk - which has no sshd - and spends its whole budget on a machine that could never
+# answer.
+#
+# `needs:` IS THE FIX, AND IT IS WHAT THE REFERENCE IMPLEMENTATION ALWAYS DID:
+#
+#	jobs/bake  ->  jobs/launch needs bake  ->  jobs/ssh needs bake  ->  jobs/vm-configure needs ssh
+#
+# A leg cannot start before the artifact it pulls exists, because it is not SCHEDULED until then. The
+# cost is the sum rather than the maximum, and that is the right way round: a serial chain that finishes
+# is worth more than a parallel one whose third leg always times out.
+#
+
+on:
+  # ONE STAGE, DISPATCHED BY HAND. This was a job inside `windows.yml`, where `needs:` decided the
+  # order; each stage is its own workflow now.
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks"
+        default: "easydev-org/easyvm-windows"
+      from_tag:
+        description: >-
+          the PUBLISHED disk this stage continues from (default windows11)
+        default: "windows11"
+
+concurrency:
+  group: windows-ssh
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  ssh:
+    needs: [install]
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.2
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.2
+      disk_gb: "25"
+      group: windows
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows-ssh",
+            "file": "11/steps/ssh.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "windows11-ssh.qcow2",
+            "publish": "windows11-ssh",
+            "timeout": 70
+          }
+        ]
