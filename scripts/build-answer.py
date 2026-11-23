@@ -163,6 +163,34 @@ LABCONFIG = r"""      <RunSynchronous>
 """
 
 
+def list_members(medium):
+    """Every member path on a medium, lower-cased, from `7z l`.
+
+    THE UNFILTERED LISTING IS THE POINT: `p7zip` 16.02 ignores a trailing member argument where 7-Zip
+    24/26 honours it, and the ignored form succeeds with no output - so "filter here, match elsewhere"
+    is the only shape that behaves the same on both. `-slt` prints one `Path = ...` per member; the
+    plain table is the fallback for a build without it.
+    """
+    out = subprocess.run(["7z", "l", "-ba", "-slt", medium], capture_output=True, text=True)
+    if out.returncode != 0:
+        out = subprocess.run(["7z", "l", "-ba", medium], capture_output=True, text=True)
+        if out.returncode != 0:
+            raise SystemExit(f"{medium}: 7z could not list it: {(out.stderr or out.stdout).strip()[:300]}")
+    paths = []
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("Path = "):
+            paths.append(line[len("Path = "):].strip().lstrip("./"))
+            continue
+        parts = line.split()
+        if len(parts) >= 6 and (parts[2].isdigit() or parts[3].isdigit()):
+            paths.append(" ".join(parts[5:]).strip().lstrip("./"))
+    # THE ORIGINAL CASE IS KEPT, because `7z x -i@-` matches the member names as the medium spells
+    # them and an ISO's tree is mixed case (`Balloon/w11/amd64/Balloon.inf`). Matching folds case at
+    # the comparison instead - see `extract_drivers`.
+    return paths
+
+
 # THE DIRECTORY NAME IS THE CONFIGURATION: Setup looks for `$WinPEDriver$` beside the answer file.
 WINPE_DIR = "$WinPEDriver$"
 
@@ -216,15 +244,51 @@ def extract_drivers(virtio_iso, stage):
     winpe = os.path.join(stage, WINPE_DIR)
     os.makedirs(winpe, exist_ok=True)
 
+    # THE MEMBERS ARE LISTED ONCE AND MATCHED HERE, BECAUSE 7z'S OWN MEMBER FILTER IS NOT THE SAME
+    # PROGRAM ON EVERY BUILD.
+    #
+    # MEASURED ON RUN 45218712522: this function extracted nothing at all on an ubuntu runner and said
+    # "no drivers were extracted", for a virtio-win ISO whose trees are present. `p7zip` 16.02 - what
+    # `apt-get install p7zip-full` gives - answers NOTHING and exit status 0 when `7z x` is given a
+    # member pattern it does not apply literally; 7-Zip 24/26 expands `driver/version/amd64/*` and
+    # extracts the files. Same command, two answers, and the failing one is silent.
+    #
+    # So the listing is taken WITHOUT a filter - the same call `wim-editions.py` was fixed to make -
+    # and each wanted directory is handed to `7z x` as the list of members that matched it.
+    members = list_members(virtio_iso)
+
     found = []
     for driver in DRIVERS:
         for version in DRIVER_VERSIONS:
-            member = f"{driver}/{version}/amd64"
-            subprocess.run(["7z", "x", "-y", f"-o{winpe}", virtio_iso, member + "/*"],
-                           capture_output=True, text=True)
+            prefix = f"{driver}/{version}/amd64/"
+            # CASE FOLDED AT THE COMPARISON, NEVER IN THE PATH HANDED BACK TO 7z.
+            wanted = [m for m in members
+                      if m.lower().startswith(prefix.lower()) and not m.endswith("/")]
+            if not wanted:
+                continue
+            # THE MEMBER LIST GOES IN A FILE, BECAUSE `-i@-` DOES NOT READ STDIN. MEASURED: it answers
+            # "The file operation error for listfile errno=2 : No such file or directory -", i.e. it
+            # resolved the literal name `-` as a path. `-i@<file>` is the form that works.
+            #
+            # THE LIST IS ALSO WHAT KEEPS THE COMMAND LINE SHORT: a driver directory is twenty-odd
+            # files and an ISO's names are the publisher's, so they are neither quoted nor expanded.
+            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
+                fh.write("\n".join(wanted) + "\n")
+                listfile = fh.name
+            try:
+                subprocess.run(["7z", "x", "-y", f"-o{winpe}", f"-i@{listfile}", virtio_iso],
+                               capture_output=True, text=True)
+            finally:
+                os.unlink(listfile)
             source = os.path.join(winpe, driver, version, "amd64")
             if not has_files(source):
-                continue
+                # THE FILES MAY HAVE COME OUT FLAT, at the path the member names rather than under a
+                # recreated directory - `7z` does both depending on the member list and the build.
+                alt = os.path.join(winpe, *prefix.rstrip("/").split("/"))
+                if has_files(alt):
+                    source = alt
+                else:
+                    continue
             target = os.path.join(winpe, driver)
             os.makedirs(target, exist_ok=True)
             for entry in os.listdir(source):
