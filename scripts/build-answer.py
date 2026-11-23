@@ -45,12 +45,123 @@ import tempfile
 
 # THE IDENTITY, IN ONE PLACE. If a guest ever needs a different name, it is a different artifact -
 # not a flag, because a flag is a second place for the same fact.
+#
+# THE EDITION SELECTOR IS *NOT* HERE, AND THAT IS THE POINT OF THIS FILE'S SECOND HALF. It used to be
+# `__WINDOWS_IMAGE_INDEX__: "6"` - a NUMBER THAT IS TRUE OF ONE MEDIUM. MEASURED across the images this
+# repository publishes: Windows 11 consumer has Professional at 6, the IoT LTSC evaluation medium has
+# one or two images and 6 is out of range, and Windows Server 2025's install media names its images
+# "Windows Server 2025 SERVERSTANDARD" rather than offering a numbered list. So the selector is read
+# from the ISO being installed - `scripts/wim-editions.py` - and passed in as `--index` or `--want`.
 IDENTITY = {
     "__ADMIN_USER__": "vmuser",
     "__ADMIN_PASSWORD__": "admin",
     "__COMPUTER_NAME__": "sandbox",
-    "__WINDOWS_IMAGE_INDEX__": "6",
 }
+
+# WHAT EACH FAMILY'S ANSWER FILE DIFFERS IN, AS DATA RATHER THAN AS FOUR COPIES OF A TEMPLATE.
+#
+# THE THREE DIFFERENCES THAT ARE NOT COSMETIC:
+#
+#	product key        Windows 11 Pro's generic install key selects Professional from a consumer
+#	                   medium. The SAME key on an LTSC medium selects nothing - the edition it names
+#	                   is not on the disc - and Setup stops asking for one. dockur/windows ships a
+#	                   different key per family (M7XTQ-... for 11 LTSC, CGK42-... for 11 IoT,
+#	                   TVRH6-... for Server 2025) for exactly this reason.
+#	labconfig          The TPM/SecureBoot bypasses exist because OVMF_CODE_4M.fd has no Microsoft
+#	                   keys. Windows 10 DOES NOT CHECK for either, and writes to LabConfig that
+#	                   nothing reads - harmless, but a lie in a file that is supposed to say what
+#	                   the guest needs. Server 2025 does not check either.
+#	architecture       `processorArchitecture="amd64"` eight times. An ARM64 medium needs `arm64`
+#	                   in all eight, or Setup ignores every component in the file.
+#
+# SO THE TEMPLATE CARRIES PLACEHOLDERS AND THIS TABLE FILLS THEM. A fourth release is a fourth row.
+PROFILES = {
+    # The generic Pro key: it SELECTS an edition from a multi-image consumer medium and activates
+    # nothing. Published by Microsoft for exactly this.
+    "win11": {
+        "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T",
+        "want": "Windows 11 Pro",
+        "arch": "amd64",
+        "labconfig": True,
+        "select": "index",
+    },
+    "win10": {
+        # Windows 10 22H2's consumer medium carries Pro at index 6 as well, and the same generic key
+        # selects it. MEASURED against the medium this repository mirrors.
+        "key": "VK7JG-NPHTM-C97JM-9MPGT-3V66T",
+        "want": "Windows 10 Pro",
+        "arch": "amd64",
+        # NO LABCONFIG: Windows 10 has no TPM or Secure Boot requirement, so the bypasses would be
+        # registry writes for checks that never run.
+        "labconfig": False,
+        "select": "index",
+    },
+    "win11iot-ltsc": {
+        # THE LTSC EVALUATION KEY, from Microsoft's own Evaluation Center page: `M7XTQ-FN8P6-TTKYV-9D4CC-J462D`.
+        # A retail/KMS key cannot select an evaluation image, and the Pro key above selects nothing on
+        # this medium at all.
+        "key": "M7XTQ-FN8P6-TTKYV-9D4CC-J462D",
+        "want": "IoT Enterprise LTSC",
+        "arch": "amd64",
+        "labconfig": True,
+        "select": "index",
+    },
+    "win2025": {
+        # SERVER 2025 EVALUATION. The medium names its images rather than numbering them, which is why
+        # the selection is by NAME for this family - see scripts/wim-editions.py.
+        "key": "TVRH6-WHNXV-R9WG3-9XRFY-MY832",
+        "want": "Windows Server 2025 SERVERSTANDARD",
+        "arch": "amd64",
+        # Server does not require TPM or Secure Boot.
+        "labconfig": False,
+        # BY NAME, NOT BY INDEX. The Server medium's images are named "Windows Server 2025
+        # SERVERSTANDARD" and "…SERVERDATACENTER"; the order they appear in is a fact about the
+        # build, and a number copied from another release is how a server installs the wrong
+        # edition. `/IMAGE/NAME` is compared for equality, which is what a name is for.
+        "select": "name",
+    },
+}
+
+# THE PLACEHOLDER NAMES THE TEMPLATE USES, filled from a profile above and from `--index`/`--want`.
+PROFILE_KEYS = ("key", "arch", "labconfig")
+
+# THE FOUR BYPASSES, AS ONE STRING, BECAUSE THE WHOLE ELEMENT IS PRESENT OR ABSENT.
+#
+# AN EMPTY <RunSynchronous/> IS NOT THE SAME AS NO ELEMENT: the schema wants at least one command, so
+# "this family does not need the bypasses" has to delete the element rather than fill it with nothing.
+LABCONFIG = r"""      <RunSynchronous>
+        <!-- TPM check. NO TPM IS ATTACHED BY DEFAULT and this is what makes that work.
+             dockur/windows installs and runs Windows 11 the same way; its own install.sh
+             says the secure/TPM path exists only for an install that was aborted, since
+             that one has no answer file to bypass with. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+          <Description>Do not stop on the TPM check</Description>
+        </RunSynchronousCommand>
+        <!-- THE ONE THAT MATTERS: the firmware has no Secure Boot keys. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+          <Description>Do not stop on the Secure Boot check</Description>
+        </RunSynchronousCommand>
+        <!-- RAM. 8 GiB is configured, above the 4 GiB floor, but a smaller bake would
+             otherwise fail on a check nobody was looking at. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+          <Description>Do not stop on the RAM check</Description>
+        </RunSynchronousCommand>
+        <!-- Upgrades from unsupported CPUs. The guest CPU is `-cpu host`, so this is
+             relevant only on a host whose model Windows does not list. -->
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg.exe add "HKLM\SYSTEM\Setup\MoSetup" /v AllowUpgradesWithUnsupportedTPMOrCPU /t REG_DWORD /d 1 /f</Path>
+          <Description>Allow an unlisted CPU model</Description>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+"""
+
 
 # THE DIRECTORY NAME IS THE CONFIGURATION: Setup looks for `$WinPEDriver$` beside the answer file.
 WINPE_DIR = "$WinPEDriver$"
@@ -131,7 +242,7 @@ def extract_drivers(virtio_iso, stage):
     return found
 
 
-def build(template, virtio_iso, out, label):
+def build(template, virtio_iso, out, label, values):
     if not os.path.isfile(template):
         raise SystemExit(f"no answer file at {template}")
     if not shutil.which("xorriso"):
@@ -141,7 +252,7 @@ def build(template, virtio_iso, out, label):
     stage = tempfile.mkdtemp(prefix="answeriso-")
     try:
         with open(template, encoding="utf-8") as f:
-            text = substitute(f.read(), IDENTITY)
+            text = substitute(f.read(), values)
 
         # WINDOWS .cmd FILES MUST BE CRLF, BUT THIS FILE IS .xml - which has no such requirement,
         # and rewriting it only risks a BOM or an encoding question. The engine's builder made the
@@ -186,8 +297,58 @@ def main():
     ap.add_argument("--virtio-iso", required=True, help="the virtio-win ISO the drivers come from")
     ap.add_argument("--out", required=True, help="the ISO to write")
     ap.add_argument("--label", default="ANSWER", help="the ISO's volume name")
+    ap.add_argument("--profile", required=True, choices=sorted(PROFILES),
+                    help="which Windows family this answer CD is for: the product key, the "
+                         "architecture and whether the TPM bypasses belong in it")
+    # THE EDITION SELECTOR COMES FROM THE MEDIUM, NEVER FROM THIS FILE. One of these two is required,
+    # because a template with neither leaves Setup on its image-picker page inside an install nobody
+    # is watching.
+    sel = ap.add_mutually_exclusive_group(required=True)
+    sel.add_argument("--index", type=int,
+                     help="the /IMAGE/INDEX to install - the number scripts/wim-editions.py "
+                          "printed for this ISO")
+    sel.add_argument("--want",
+                     help="the /IMAGE/NAME to install - used by Server, whose medium names its "
+                          "images instead of numbering them")
     args = ap.parse_args()
-    build(args.template, args.virtio_iso, args.out, args.label)
+
+    profile = dict(PROFILES[args.profile])
+    values = dict(IDENTITY)
+    values["__PRODUCT_KEY__"] = profile["key"]
+    values["__ARCH__"] = profile["arch"]
+    # AN EMPTY REPLACEMENT DELETES THE ELEMENT, and that is the whole point: `substitute` replaces
+    # the placeholder with the string, so "" leaves a blank line where a family does not need the
+    # TPM bypasses - which is what "absent" has to look like in a file this one generates.
+    values["__LABCONFIG__"] = LABCONFIG if profile["labconfig"] else ""
+
+    if args.index is not None:
+        if args.index < 1:
+            raise SystemExit("--index must be 1 or more; %d is not an image index" % args.index)
+        # AN INDEX IS A SELECTOR, NOT AN EDITION NAME. Setup matches the number against the medium's
+        # own list, so a wrong number installs a different edition or fails - which is why the caller
+        # is expected to have got it from wim-editions.py rather than from this repository.
+        values["__IMAGE_SELECTOR__"] = (
+            "            <MetaData wcm:action=\"add\">\n"
+            "              <Key>/IMAGE/INDEX</Key>\n"
+            "              <Value>%d</Value>\n"
+            "            </MetaData>" % args.index)
+        selection = "index %d" % args.index
+    else:
+        want = args.want.strip()
+        if not want:
+            raise SystemExit("--want is empty; it must name an image")
+        # XML-ESCAPED, because an image name can contain `&` (Windows 11 "IoT Enterprise LTSC" does
+        # not, but a localized name may) and an unescaped one is a file Setup cannot parse.
+        escaped = (want.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+        values["__IMAGE_SELECTOR__"] = (
+            "            <MetaData wcm:action=\"add\">\n"
+            "              <Key>/IMAGE/NAME</Key>\n"
+            "              <Value>%s</Value>\n"
+            "            </MetaData>" % escaped)
+        selection = "name %r" % want
+
+    print("  profile %s: %s, %s" % (args.profile, profile["key"], selection))
+    build(args.template, args.virtio_iso, args.out, args.label, values)
 
 
 if __name__ == "__main__":

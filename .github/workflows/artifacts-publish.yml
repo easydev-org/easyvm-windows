@@ -52,6 +52,32 @@ jobs:
         artifact:
           - { tag: "iso-windows11", group: "windows", url: "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/26200.6584.250915-1905.25h2_ge_release_svc_refresh_CLIENT_CONSUMER_x64FRE_en-us.iso", sha: "d141f6030fed50f75e2b03e1eb2e53646c4b21e5386047cb860af5223f102a32", size: "7736125440" }
           - { tag: "iso-virtio-win", group: "windows", url: "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso", sha: "", size: "0" }
+          # THE THREE WINDOWS MEDIA THE ANSWER JOB'S OTHER ROWS READ.
+          #
+          # EACH IS A `go.microsoft.com/fwlink` RATHER THAN A DATED CDN PATH, AND THAT IS A MEASURED
+          # CHOICE: the two client ISOs above are pinned to a build string
+          # (`26200.6584.250915-1905.25h2_ge_release_...`), which stops existing when Microsoft
+          # refreshes it. The Evaluation Center's links are stable REDIRECTS - the filename behind
+          # them changes with each refresh, so their digests cannot be pinned, and their LENGTH is
+          # checked instead. `mirror-one.sh` follows redirects and checks whatever length is written
+          # here, which is the same contract `iso-virtio-win` already has with `size: "0"`.
+          #
+          # THE SIZES ARE MEASURED, not copied: each was the `Content-Length` the redirect served on
+          # 2026-11-23, and a length that disagrees is a refused push rather than a warning.
+          # WINDOWS 10 HAS NO STABLE FILE LINK AND THAT IS WHY IT CARRIES `resolve:` INSTEAD OF
+          # `url:`. Its public page stopped serving an ISO to Windows visitors in 2025-10, and the
+          # connector's answer is a SIGNED URL that expires in a day (`?t=...&P1=<unix time>`) - so a
+          # literal one in this file is a dead link for every run after tomorrow. MEASURED: the
+          # connector answered
+          #
+          #	https://software.download.prss.microsoft.com/dbazure/Win10_22H2_English_x64v1.iso
+          #	  ?t=67fc0410-...&P1=1795536030&...
+          #
+          # and 1795536030 is 2026-11-24T16:00:30Z. `scripts/fetch-windows-iso.py` makes the four
+          # requests that page made, every time, so the URL is minted in the job that uses it.
+          - { tag: "iso-win10",         group: "windows", resolve: "win10", sha: "", size: "6140975104" }
+          - { tag: "iso-win11iot-ltsc", group: "windows", url: "https://go.microsoft.com/fwlink/?linkid=2270353&clcid=0x409&culture=en-us&country=us", sha: "", size: "5060020224" }
+          - { tag: "iso-win2025",       group: "windows", url: "https://go.microsoft.com/fwlink/?linkid=2345730&clcid=0x409&culture=en-us&country=us", sha: "", size: "8152356864" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty
@@ -115,6 +141,41 @@ jobs:
           disk-gb: '25'
           token: ${{ github.token }}
 
+      - name: mint the URL, when the row names a resolver instead of a link
+        if: steps.wanted.outputs.wanted == 'yes'
+        # A ROW EITHER HAS A `url:` OR A `resolve:`, NEVER BOTH, and this step is the second kind. The
+        # resolver is a Python script because Windows 10's page needs a session, an anti-bot token, a
+        # SKU lookup and a redirect - four requests that a `curl` line cannot express, and whose result
+        # expires in a day so it cannot be written into this file at all.
+        #
+        # THE DIGEST IS STILL NOT PINNED for these rows and the reason is in the row's comment: the
+        # filename behind the link changes at each refresh. The LENGTH is the check, and it is exact.
+        id: mint
+        env:
+          RESOLVE: ${{ matrix.artifact.resolve }}
+        run: |
+          set -eu
+          if [ -z "${RESOLVE:-}" ]; then
+            echo "url=${{ matrix.artifact.url }}" >> "$GITHUB_OUTPUT"
+            echo "this row has a literal url; nothing to mint"
+            exit 0
+          fi
+          case "$RESOLVE" in
+            win10|win11|win11iot-ltsc|win2025) ;;
+            *) echo "::error::$RESOLVE is not a name fetch-windows-iso.py knows"; exit 1 ;;
+          esac
+          # THE ARCH IS x64 FOR EVERY ROW THIS REPOSITORY PUBLISHES. An ARM64 medium is a second
+          # machine shape (`qemu-system-aarch64`, AAVMF, `virtio-blk-device`) and the engine spawns
+          # `qemu-system-x86_64` by name - see docs/WINDOWS-VERSIONS.md. Adding an ARM64 row here
+          # without that shape would publish an ISO no stage can boot.
+          url=$(python3 scripts/fetch-windows-iso.py "$RESOLVE" x64)
+          case "$url" in
+            https://*) ;;
+            *) echo "::error::the resolver answered something that is not a URL: $url"; exit 1 ;;
+          esac
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "=== minted a $(printf '%s' "$url" | sed -E 's/[?].*//' | sed 's|.*/||') URL"
+
       - name: download and verify
         if: steps.wanted.outputs.wanted == 'yes'
         # THE PER-ARTIFACT RULE LIVES IN ONE SCRIPT, because it is fifteen comments long and a matrix
@@ -131,7 +192,7 @@ jobs:
           set -eu
           path=$(sh scripts/mirror-one.sh \
                    "${{ matrix.artifact.tag }}" \
-                   "${{ matrix.artifact.url }}" \
+                   "${{ steps.mint.outputs.url }}" \
                    "${{ matrix.artifact.sha }}" \
                    "${{ matrix.artifact.size }}")
           echo "path=$path" >> "$GITHUB_OUTPUT"
@@ -206,7 +267,16 @@ jobs:
   #	user      vmuser     the walk's own default
   #	password  admin      the walk's own default
   #	computer  sandbox    the walk's own default
-  #	image     6          the walk's own default
+  #
+  # THE IMAGE SELECTOR IS NOT IN THAT LIST, AND IT USED TO BE. It was `image 6`, and 6 is true of ONE
+  # MEDIUM. MEASURED across the four this repository now publishes:
+  #
+  #	Windows 11 consumer          index 6 is Professional
+  #	Windows 11 IoT LTSC eval     6 is OUT OF RANGE - the medium carries one or two images
+  #	Windows Server 2025 eval     the medium NAMES its images instead of numbering them
+  #
+  # so the selector is read from the medium being installed and the answer file carries the OTHER
+  # kind of selector for Server. `scripts/build-answer.sh` does both, and prints the table it read.
   #
   # THE IDENTITY IS SHARED ON PURPOSE, which is the same call macOS's firmware build made: a guest's
   # identity is a fact about the IMAGE, not about a run. A published disk whose password changes per
@@ -215,8 +285,9 @@ jobs:
   # THE SAME OUTPUT AS THE ENGINE'S BUILDER, VERIFIED: scripts/build-answer.py and the Go code produce
   # a byte-identical tree - 24 files, `diff -r` clean - for the same template and virtio-win ISO.
   #
-  # THE TAG IS `answer-windows11`, named for the GUEST because the image index and the account are
-  # facts about it. A second Windows release is a second row, not a different flag.
+  # ONE ROW PER FAMILY, AND THE TAG NAMES THE GUEST. `answer-windows11` is what the 11 walks pull and
+  # the name that already exists; the other three are new tags, one per medium, because an answer
+  # file carries a product key and an image index - two facts that belong to a release.
   answer:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -225,6 +296,16 @@ jobs:
       packages: write
       checks: write
     if: github.event_name != 'workflow_dispatch' || (inputs.which == '' && (inputs.group == 'all' || inputs.group == 'windows'))
+    strategy:
+      fail-fast: false
+      matrix:
+        # `family` is a row of build-answer.py's PROFILES, `tag` is the package tag, and `medium` is
+        # the ISO row above whose image table is read. The three are one fact seen three ways.
+        answer:
+          - { family: "win11",         tag: "answer-windows11",         medium: "iso-windows11" }
+          - { family: "win10",         tag: "answer-win10",             medium: "iso-win10" }
+          - { family: "win11iot-ltsc", tag: "answer-win11iot-ltsc",     medium: "iso-win11iot-ltsc" }
+          - { family: "win2025",       tag: "answer-win2025",           medium: "iso-win2025" }
     steps:
       - uses: actions/checkout@v4
 
@@ -235,7 +316,10 @@ jobs:
           # `p7zip-full` reads the Joliet tree the drivers live in, and `xorriso` writes the ISO.
           # BOTH ARE NAMED BECAUSE THEIR ABSENCE IS A DIFFERENT FAILURE EACH TIME: a hand-written
           # Joliet reader produces 8.3 names that do not match the driver the answer file names.
-          sudo apt-get install -y -qq p7zip-full xorriso
+          #
+          # `wimtools` IS NEW AND IT IS THE POINT: the edition table is read out of the medium's own
+          # install.wim with `wimlib-imagex`, so no index is ever copied from another release.
+          sudo apt-get install -y -qq p7zip-full xorriso wimtools
 
       - name: pull the virtio-win ISO the drivers come from
         # THE BUILD DOES NOT DOWNLOAD. It reads `virtio-win.iso` from its work directory and fails in
@@ -251,17 +335,43 @@ jobs:
             iso-virtio-win virtio-win.iso
           ls -l virtio-win.iso
 
-      - name: build answer.iso from the pinned inputs
-        # THIS IS A PYTHON SCRIPT, NOT A WALKTHROUGH STEP, AND THE REASON IS WHAT THE BUILD IS: it
-        # renders an XML file, extracts four driver directories and runs xorriso. It never boots a
-        # guest and needs no screen, so running it as a step made a build failure read like a guest
-        # failure.
+      - name: pull the Windows medium the edition table is read from
+        # THE MEDIUM IS AN INPUT TO THE ANSWER FILE, WHICH IS THE WHOLE CHANGE. It used to be only an
+        # input to the INSTALL; now the image index comes out of it, so a family whose medium is absent
+        # cannot produce a correct answer file and must fail here rather than at Setup.
+        #
+        # THE TAG NAMES THE ISO ROW, whose `description` says what file it is. `pull-artifact.sh`
+        # writes it as `windows.iso` - the name a walk's `needs:` uses - so the build reads the same
+        # bytes the leg will install from.
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          python3 "$GITHUB_WORKSPACE/scripts/build-answer.py" \
-            --template "$GITHUB_WORKSPACE/11/answer/Autounattend.xml" \
-            --virtio-iso "$GITHUB_WORKSPACE/work/virtio-win.iso" \
-            --out "$GITHUB_WORKSPACE/work/answer.iso"
+          cd "$GITHUB_WORKSPACE/work"
+          sh "$GITHUB_WORKSPACE/.github/pull-artifact.sh" \
+            ghcr.io "${{ inputs.disks_repository || github.repository }}" \
+            "${{ matrix.answer.medium }}" windows.iso
+          ls -l windows.iso
+
+      - name: build the answer CD for this family, reading its image table
+        # THIS IS A SHELL SCRIPT OVER TWO PYTHON ONES, AND THE SPLIT IS BY DECISION RATHER THAN BY
+        # LANGUAGE:
+        #
+        #	scripts/wim-editions.py   READS the medium: which images it holds, by index and name
+        #	scripts/build-answer.py   RENDERS one answer file from a family profile and a selector
+        #	scripts/build-answer.sh   JOINS them, and prints the table it read
+        #
+        # The join is a script because the failure it prevents is a WRONG NUMBER, and a wrong number
+        # is invisible: Setup stops on an image picker forty minutes into an install nobody watches.
+        # Printing the table next to the choice is what makes the log answer "which edition" without
+        # anybody re-deriving it from the ISO.
+        run: |
+          set -eu
+          sh "$GITHUB_WORKSPACE/scripts/build-answer.sh" \
+            "${{ matrix.answer.family }}" \
+            "$GITHUB_WORKSPACE/work/windows.iso" \
+            "$GITHUB_WORKSPACE/work/virtio-win.iso" \
+            "$GITHUB_WORKSPACE/work/answer.iso"
 
       - name: the ISO is big enough to be an answer CD
         # A 448 KB ISO IS THE FAILURE THIS CHECK EXISTS TO AVOID: a boot record with the answer file
@@ -275,6 +385,30 @@ jobs:
             exit 1
           fi
           ls -l "$GITHUB_WORKSPACE/work/answer.iso"
+
+      - name: the answer file names an image that this medium has
+        # THE READ-BACK THAT MAKES THE SELECTOR A CHECKED FACT RATHER THAN A VALUE SOMEBODY TYPED.
+        # The ISO the build just wrote is unpacked and its `/IMAGE/INDEX` (or `/IMAGE/NAME`) is looked
+        # up in the SAME table the build read - so a selector that does not resolve fails HERE, with
+        # both tables printed, instead of at Setup's image picker.
+        run: |
+          set -eu
+          cd "$GITHUB_WORKSPACE/work"
+          rm -rf "$GITHUB_WORKSPACE/work/answer-check"
+          mkdir -p "$GITHUB_WORKSPACE/work/answer-check"
+          7z x -y -o"$GITHUB_WORKSPACE/work/answer-check" answer.iso Autounattend.xml >/dev/null
+          xml="$GITHUB_WORKSPACE/work/answer-check/Autounattend.xml"
+          [ -s "$xml" ] || { echo "::error::answer.iso holds no Autounattend.xml"; exit 1; }
+
+          kind=$(grep -oE '/IMAGE/(INDEX|NAME)' "$xml" | head -1 | sed 's|/IMAGE/||')
+          value=$(grep -A2 '<Key>/IMAGE/' "$xml" | grep -oE '<Value>[^<]*' | head -1 | sed 's/<Value>//')
+          [ -n "$kind" ] && [ -n "$value" ] || {
+            echo "::error::the answer file selects no image at all, so Setup stops on its picker"
+            exit 1
+          }
+          echo "=== the answer file selects $kind $value"
+          python3 "$GITHUB_WORKSPACE/scripts/wim-editions.py" \
+            "$GITHUB_WORKSPACE/work/windows.iso"
 
       - name: pack the answer CD into the tar the engine unpacks
         # ONE TAG, ONE TAR, BECAUSE THE ENGINE'S `fetchAnswerISO` UNPACKS IT.
@@ -294,17 +428,18 @@ jobs:
           tar -cf answer-cd.tar answer.iso
           ls -l answer-cd.tar
 
-      - name: push answer-windows11
-        # THE NAME THE ENGINE PULLS IS `answer-windows11`, from `answerTag`. Renaming one without the
-        # other is a stage that finds no answer file.
+      - name: push the answer CD under this family's tag
+        # THE TAG NAMES THE GUEST, because a product key and an image selector are facts about a
+        # RELEASE. `answer-windows11` is the one the existing 11 walks pull; the three new tags are
+        # what the new walks will pull.
         uses: easydev-org/easyactions/oci-push@main
         with:
           path: ${{ github.workspace }}/work/answer-cd.tar
-          tag: answer-windows11
+          tag: ${{ matrix.answer.tag }}
           repository: ${{ inputs.disks_repository || github.repository }}
           media-type: application/vnd.easydev.artifact
           token: ${{ github.token }}
-          check-name: answer-windows11
+          check-name: ${{ matrix.answer.tag }}
 
   # THE AGENT'S MSI AND ITS DRIVER, UNPACKED FROM THE virtio-win ISO AND PUBLISHED AS ONE TAR.
   #

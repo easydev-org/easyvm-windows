@@ -16,9 +16,23 @@
     - Anything dockur-specific (OEM wallpaper, dockur URLs, Z: drive mapping to a
       samba host). This bakes a sandbox disk, not a desktop-for-Docker product.
 
-  The two placeholders substituted by iso.sh:
-    __WINDOWS_IMAGE_INDEX__   which image in install.wim to install
-    __COMPUTER_NAME__         the name the guest gets
+  SIX PLACEHOLDERS ARE SUBSTITUTED, and they are spelled with a space here on purpose: the
+  substitution is a plain search for a doubled underscore, so a token written inside a comment is
+  replaced as readily as one written inside an element. MEASURED, and it broke this file twice - the
+  selector's replacement is several lines of XML, and dropping that into a comment is not a comment
+  any more; the bypass block contains comments of its own, and a comment inside a comment is not XML
+  at all.
+
+    computer name      the name the guest gets
+    admin user         the account it is logged in as
+    admin password     that account's password
+    architecture       `amd64` or `arm64`, in all eight components
+    product key        the key that SELECTS this family's edition from its medium
+    image selector     the MetaData element that picks WHICH image on the medium is installed
+
+  THE LAST TWO ARE NOT CONSTANTS. A product key selects an edition, and the images on a medium are
+  not numbered the same way from one release to the next - so both are filled by
+  `scripts/build-answer.py`, whose PROFILES table records what each family needs and why.
 -->
 <unattend xmlns="urn:schemas-microsoft-com:unattend"
           xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
@@ -29,7 +43,7 @@
   <settings pass="windowsPE">
 
     <component name="Microsoft-Windows-International-Core-WinPE"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <SetupUILanguage>
         <UILanguage>en-US</UILanguage>
@@ -41,7 +55,7 @@
     </component>
 
     <component name="Microsoft-Windows-Setup"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
 
       <!-- Disk 0 is the virtio disk in lib/vm.sh's argument order: the ISO is a
@@ -98,10 +112,7 @@
       <ImageInstall>
         <OSImage>
           <InstallFrom>
-            <MetaData wcm:action="add">
-              <Key>/IMAGE/INDEX</Key>
-              <Value>__WINDOWS_IMAGE_INDEX__</Value>
-            </MetaData>
+__IMAGE_SELECTOR__
           </InstallFrom>
           <InstallTo>
             <DiskID>0</DiskID>
@@ -133,12 +144,19 @@
         <FullName>easydiskbake</FullName>
         <Organization>easydev-org</Organization>
         <ProductKey>
-          <Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>
+          <Key>__PRODUCT_KEY__</Key>
           <WillShowUI>Never</WillShowUI>
         </ProductKey>
       </UserData>
 
-      <!-- WHY THESE FOUR BYPASSES ARE HERE, HAVING ONCE BEEN LEFT OUT
+      <!-- THE RunSynchronous BYPASS BLOCK IS PRESENT OR ABSENT AS A WHOLE.
+
+           ONLY WINDOWS 11 AND THE 11 IOT LTSC MEDIUM CHECK FOR TPM OR SECURE BOOT. Windows 10 does
+           not check either, and neither does Server 2025 - so for those the element is omitted
+           rather than filled with registry writes for checks that never run. An empty
+           <RunSynchronous/> is not the same thing: the schema wants at least one command.
+
+           WHY THE FOUR BYPASSES ARE HERE, HAVING ONCE BEEN LEFT OUT
 
            The reasoning for omitting them was "the VM has a real TPM 2.0 and real
            UEFI, so the checks pass". The first half is true and the second is not
@@ -158,37 +176,7 @@
 
            These run in windowsPE, before the edition is chosen, which is why they work
            here and not in a later pass. -->
-      <RunSynchronous>
-        <!-- TPM check. NO TPM IS ATTACHED BY DEFAULT and this is what makes that work.
-             dockur/windows installs and runs Windows 11 the same way; its own install.sh
-             says the secure/TPM path exists only for an install that was aborted, since
-             that one has no answer file to bypass with. -->
-        <RunSynchronousCommand wcm:action="add">
-          <Order>1</Order>
-          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
-          <Description>Do not stop on the TPM check</Description>
-        </RunSynchronousCommand>
-        <!-- THE ONE THAT MATTERS: the firmware has no Secure Boot keys. -->
-        <RunSynchronousCommand wcm:action="add">
-          <Order>2</Order>
-          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
-          <Description>Do not stop on the Secure Boot check</Description>
-        </RunSynchronousCommand>
-        <!-- RAM. 8 GiB is configured, above the 4 GiB floor, but a smaller bake would
-             otherwise fail on a check nobody was looking at. -->
-        <RunSynchronousCommand wcm:action="add">
-          <Order>3</Order>
-          <Path>reg.exe add "HKLM\SYSTEM\Setup\LabConfig" /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
-          <Description>Do not stop on the RAM check</Description>
-        </RunSynchronousCommand>
-        <!-- Upgrades from unsupported CPUs. The guest CPU is `-cpu host`, so this is
-             relevant only on a host whose model Windows does not list. -->
-        <RunSynchronousCommand wcm:action="add">
-          <Order>4</Order>
-          <Path>reg.exe add "HKLM\SYSTEM\Setup\MoSetup" /v AllowUpgradesWithUnsupportedTPMOrCPU /t REG_DWORD /d 1 /f</Path>
-          <Description>Allow an unlisted CPU model</Description>
-        </RunSynchronousCommand>
-      </RunSynchronous>
+__LABCONFIG__
     </component>
   </settings>
 
@@ -217,7 +205,7 @@
   -->
   <settings pass="offlineServicing">
     <component name="Microsoft-Windows-LUA-Settings"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <EnableLUA>false</EnableLUA>
     </component>
@@ -229,7 +217,7 @@
   <settings pass="specialize">
 
     <component name="Microsoft-Windows-Shell-Setup"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <ComputerName>__COMPUTER_NAME__</ComputerName>
       <TimeZone>UTC</TimeZone>
@@ -238,13 +226,13 @@
     </component>
 
     <component name="Microsoft-Windows-Security-SPP-UX"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <SkipAutoActivation>true</SkipAutoActivation>
     </component>
 
     <component name="Microsoft-Windows-Deployment"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <RunSynchronous>
         <!-- RDP on. A baked sandbox is reached over the network or not at all,
@@ -288,7 +276,7 @@
   <settings pass="oobeSystem">
 
     <component name="Microsoft-Windows-International-Core"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
       <InputLocale>0409:00000409</InputLocale>
       <SystemLocale>en-US</SystemLocale>
@@ -297,7 +285,7 @@
     </component>
 
     <component name="Microsoft-Windows-Shell-Setup"
-               processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35"
+               processorArchitecture="__ARCH__" publicKeyToken="31bf3856ad364e35"
                language="neutral" versionScope="nonSxS">
 
       <!-- THE LOCAL ACCOUNT.

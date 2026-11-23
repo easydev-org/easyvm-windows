@@ -1,0 +1,394 @@
+walkthrough "windows 10 - install to a desktop"
+resolution 1920x1080
+recording_resolution 1920x1080
+user vmuser
+var boot_timeout
+  default "1800"
+  from args.boot_timeout
+var computer_name
+  default sandbox
+  from args.computer_name
+var out
+  default out/windows10.qcow2
+  from args.out
+password admin
+var user
+  default vmuser
+  from args.user
+# THE IMAGE INDEX IS NOT A VARIABLE OF THIS FILE. It is a fact about the MEDIUM, and the answer CD
+# carries it: `scripts/build-answer.sh win10` reads the medium's own install.wim and writes the
+# selector into Autounattend.xml. A number here would be a second place for the same fact, and the
+# two would disagree the first time a release reordered its images.
+ssh_port 2222
+step "the media this stage boots from is already on disk"
+  needs [windows.iso, virtio-win.iso]
+
+
+step "create the empty disk"
+  disk
+    file disk.qcow2
+    size 128
+
+
+
+step "boot the installer"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "12288"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=windows.iso,media=cdrom,readonly=on,if=none,id=media0"], ["-device", "ide-cd,drive=media0,bootindex=0"], ["-drive", "file=answer.iso,media=cdrom,readonly=on,if=none,id=media1"], ["-device", "usb-storage,bus=xhci.0,drive=media1,bootindex=2"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=1"], ["-drive", "file=virtio-win.iso,media=cdrom,readonly=on,if=none,id=media2"], ["-device", "usb-storage,bus=xhci.0,drive=media2,bootindex=3"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    timeout 1800
+step "wait for the firmware to offer the DVD"
+  until DVD-ROM
+  blind_after 60
+  from console
+  timeout 180
+
+
+# RETURN, NOT ESCAPE, AND THE DIFFERENCE IS MEASURED ON THE RECORDING ITSELF.
+#
+# These three presses exist for the firmware's own "Press any key to boot from CD or DVD" line, where
+# either key works. WHAT THEY ALSO REACH, ONCE SETUP IS RUNNING, IS A DIFFERENT MATTER: Escape is
+# Setup's Cancel shortcut, and MEASURED on run 45166271464 the recording carries the consequence from
+# t=60s onward -
+#
+#	Windows 10 Setup
+#	We're getting a few things ready
+#	  (!) Are you sure you want to quit?     [ Yes ]  [ No ]
+#
+# - a modal raised one minute in, sitting on top of the install for the ninety minutes the run lasted.
+# The desktop check answered `0.0000 similar` on all 5336 frames because the dialog was all there was.
+#
+# RETURN DOES NOT DO THAT. On "Press any key" it is the key the prompt is asking for, and on Setup's
+# own pages it activates the default control rather than Cancel - which is why the three presses are
+# `ret` here and were `esc` for as long as the dialog was blamed on something else.
+step "press a key so the loader takes it"
+  input ret
+  settle 1
+
+
+step "press it again, because the prompt is emitted more than once"
+  input ret
+  settle 1
+
+
+step "and once more, for a loader that was not listening yet"
+  input ret
+  settle 2
+
+
+step "Setup is on screen"
+  repeat
+    do
+      item
+        settle 5
+      item "read the screen"
+        read
+          name screen
+    until
+      bind done
+      source screen
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      words [Windows, Setup]
+    max 180
+# NINETY MINUTES WAS NOT ENOUGH ON A GITHUB RUNNER, AND THE FRAME SAYS WHY.
+#
+# MEASURED ON RUN 44377939172, which spent its whole 1h30m and failed:
+#
+#   wait for the desktop: no windows desktop within 1h30m0s; drop=+20.7 (need 15)
+#     ratio=0.1x (need 2) sat=+0.07 (need 0.10) on a 1920x1080 frame
+#
+# THAT FRAME IS "Please keep your computer on. Your computer may restart a few times." - the
+# installer's own OOBE, still posting. `desktop: windows` is RIGHT to refuse it: a black screen with
+# one line of white text has no variance and no saturation, which is exactly the two measurements
+# that failed.
+#
+# SO THE BUDGET IS THE THING THAT WAS WRONG, not the predicate. Two hours is the same order as the
+# install above it (`timeout: 1800` for the boot, then this), and a leg whose guest is slow loses
+# the whole run to a number chosen before one had been measured on this runner.
+# THE OOBE STOPS DEAD ON ITS OWN REBOOT NOTICE UNLESS SOMETHING TOUCHES THE KEYBOARD.
+#
+# MEASURED TWICE. Run 44377939172 spent its whole 1h30m and run 44410380340 its whole 2h on the
+# same frame:
+#
+#	Please keep your computer on.
+#	Your computer may restart a few times.
+#
+# with a `Select C:\WINDOWS\SYSTEM32\netsh.exe` window over it. The measurements the predicate
+# uses are on that frame - ratio=0.1x and sat=+0.07, both under what a desktop needs - so
+# `desktop: windows` was RIGHT every time it refused, for two hours.
+#
+# `desktop:` IS A PASSIVE POLL: it takes a frame and decides, and nothing in it presses a key. The
+# OOBE waits for one. So the keys come first, in a loop that is bounded and ends when the screen is
+# no longer the notice - `until: {fact: ...}` is not usable here (no mode reports it), so the loop
+# is a fixed number of nudges and `desktop:` still has the real timeout.
+# THE PRESSES ARE FURTHER APART AND THERE ARE FEWER OF THEM, BECAUSE THE FIRST SET MEASURED NO
+# EFFECT. Ten Returns twenty seconds apart, then two hours of the same frame: `netsh.exe` is
+# sysprep's own window and it does not read the keyboard. A key pressed into a busy sysprep is at
+# best ignored and at worst queued into whatever runs next.
+#
+# SO THEY ARE A GENTLE PERIODIC NUDGE - a minute apart, six of them - for the case where the OOBE
+# really is waiting on the "press any key" line, and the memory above is the actual fix for the
+# stall that was measured.
+#
+# AND SIX RETURNS INTO A RUNNING INSTALL IS SIX CHANCES TO PRESS SOMETHING THAT IS NOT A NUDGE.
+# MEASURED ON RUN 44468093359, whose recording ends on this exact frame after 2h07m:
+#
+#	Installing Windows 10        54% complete
+#	[ Windows 10 Setup ]  Are you sure you want to quit?   [Yes]  [No]
+#
+# The installer had reached 54% and was working, and the sixth Return landed on its `Cancel`
+# button, which carries the FOCUS on that page. The "are you sure" dialog then sat there until
+# the budget ran out. The nudge was written for an OOBE that waits on "press any key", and NOTHING
+# IN IT COULD TELL THAT SCREEN FROM AN INSTALL THAT IS 54% DONE.
+#
+# AND THE ANSWER IS GATED ON THE DIALOG ITSELF, NOT ON THE PROGRESS LINE.
+#
+# THE FIRST ATTEMPT AT THIS GATE WAS `when_not: [complete]` AND IT FAILED FOR A REASON THAT IS IN
+# THE ENGINE: `doUnless` treats an unreadable screen as an ERROR, because "the words are absent"
+# and "nobody looked" are different facts. MEASURED ON RUN 44490615000, which died at step 10:
+#
+#	nudge the first boot along, once - unless: 0 word(s):
+#	status: failed step 10/22 "nudge the first boot along, once"
+#
+# The band was the progress line and the screen at that moment was "We're getting a few things
+# ready", which has none. So the gate refused, and a guard against cancelling an install became a
+# way to lose one.
+#
+# `when:` READS, AND A MISSING READING IS A SKIP. That is the behaviour this needs: press the key
+# ONLY when the quit dialog is on screen, and do nothing at all on every other frame.
+#
+# WHY THE DIALOG AND NOT "press any key": MEASURED on the 2h07m recording, where the progress line
+# reads 28% at 200 s, 54% at 600 s, and 54% again at 1200, 1800, 2400 and 3000 - the install had
+# stopped, and the quit dialog is up from about 520 s. The dialog is what has to be answered.
+
+
+step "answer a quit dialog, if one is up"
+  input esc
+  rect [820, 460, 1520, 660]
+  rect_at [1920, 1080]
+  # SCALE 2, BECAUSE SCALE 1 DOES NOT READ THE WORD THIS GATE NEEDS. Read back from the recording:
+  # scale 1 gives "yeusureyouwantto au?" - no whole word in it, so a gate keyed on `quit` would
+  # never open - and scale 2 gives "Are you sure you want to quit?".
+  #
+  # THE GATE IS `sure`, NOT `quit`, BECAUSE THIS GUEST MAY PHRASE IT DIFFERENTLY. See the note by
+  # the first gate below: Windows 10's Setup is reported to say "exit", and `sure` is the word both
+  # sentences share.
+  scale 2
+  settle 15
+  when [sure]
+# THE SAME ANSWER ONCE MORE, because a dialog that has been dismissed can come back: the first
+# one appeared only because a stray Return had pressed Cancel, and no Return is sent any more.
+
+
+step "answer it again, if it came back"
+  input esc
+  rect [820, 460, 1520, 660]
+  rect_at [1920, 1080]
+  scale 2
+  settle 15
+  when [sure]
+
+# ESCAPE DOES NOT CLOSE THIS DIALOG, AND THAT IS MEASURED RATHER THAN GUESSED. Run 45166271464 sat
+# on it for ninety minutes with the desktop check answering `0.0000 similar` on every frame - the
+# install was fine, and a modal had it:
+#
+#	Windows 10 Setup
+#	Are you sure you want to quit?
+#	 [ Yes ]   [ No ]        <- `No` is focused, and the whole screen is behind it
+#
+# The screen in the recording shows `No` with a focus rectangle, so ENTER is what dismisses it. An
+# `esc` here does nothing at all - which is why the two steps above never cleared it, and why the
+# desktop never appeared while the guest sat waiting behind a question nobody answered.
+step "dismiss the quit dialog by clicking its No button"
+  # A CLICK AT THE BUTTON, FOR THE SAME REASON THE LOOP BELOW USES ONE: a keystroke goes to whatever
+  # the page focuses, and the page under an install in progress focuses its own Cancel.
+  input
+    click [1035, 620]
+  settle 3
+  rect [820, 460, 1520, 660]
+  rect_at [1920, 1080]
+  scale 2
+  when [sure]
+# THE DESKTOP IS DECIDED BY THE REFERENCE IMAGE, NOT BY THREE BRIGHTNESS THRESHOLDS.
+#
+# MEASURED ON THIS GUEST'S OWN RECORDINGS. `desktop: windows` wanted drop>=15, ratio>=2x and
+# sat>=0.10 - three numbers within a few percent of each other - and the OOBE frames failed them
+# with `ratio=0.1x sat=+0.07` for TWO HOURS while the console log showed Windows Boot Manager had
+# started.
+#
+# THE SAME QUESTION, ASKED WITH A REFERENCE, SEPARATES CLEANLY. Measured on one ubuntu recording
+# frame by frame against the reference that file ships:
+#
+#	 30s   similarity 0.0004   boot splash
+#	 90s   similarity 0.0041   still splashing
+#	120s   similarity 0.9909   the desktop
+#	1600s  similarity 0.9767   the desktop, later
+#
+# "not a desktop" tops out at 0.0043 and "a desktop" bottoms out at 0.9669 - two orders of
+# magnitude - where the thresholds gave 0.1x against a floor of 2.
+#
+# THE REFERENCE IS THE ONE THE `check:` BELOW ALREADY USES, so there is one picture of this desktop
+# in the repository rather than two that could drift apart.
+
+
+step "wait for the desktop"
+  # A DIALOG CAN RETURN AT ANY POINT DURING THE INSTALL, SO THE QUESTION IS ASKED ON EVERY ROUND.
+  # The two steps above answer it once, before the wait; the packer is free to raise it again while
+  # the image is being applied, and MEASURED on run 45166271464 that is exactly what happened - the
+  # screen kept showing "Are you sure you want to quit?" while this loop read 0.0000 similarity for
+  # ninety minutes. Answering it here costs one keystroke per round and needs no new step.
+  repeat
+    do
+      # THE FRAME IS READ FIRST, AND THE KEY IS PRESSED ONLY IF THAT FRAME SAYS `quit`.
+      #
+      # MEASURED on run 45194828845, t=300s: the screen was
+      #
+      #	Installing Windows 10        18% complete        [ Cancel ]
+      #	        +------------------------------------------+
+      #	        |  (!) Are you sure you want to quit?       |
+      #	        |     [ Yes ]   [ No ]   <- No has the focus |
+      #	        +------------------------------------------+
+      #
+      # and the loop read `0.0000 similar` for sixty-three minutes. The order in the old `do:` was
+      # `input ret` and THEN the gate - so on the very first round, with no previous frame to read,
+      # the key went to whatever the 18% page had focused, which is its own `Cancel`. That raised the
+      # dialog; the next round's `ret` pressed `No`; the round after that pressed `Cancel` again. A
+      # loop that could only ever stay on the dialog it was trying to dismiss.
+      item "read the screen before touching the keyboard"
+        read
+          name screen
+      item "dismiss the quit dialog, but only if this frame is one"
+        # THE POINT IS THE `No` BUTTON ITSELF, NOT A KEYSTROKE. MEASURED from the same frame: the dialog
+        # spans x 835..1102, y 495..652, and `No` is the right-hand button at about x 1035, y 620.
+        #
+        # `ret` WOULD ALSO WORK WHEN `No` HAS THE FOCUS - and it does, in that dialog - but a keystroke
+        # is sent to whatever the page focuses, and the page underneath an install in progress focuses
+        # its own `Cancel`. A click at a coordinate is the one thing that cannot be redirected.
+        input
+          click [1035, 620]
+        settle 3
+        rect [820, 460, 1520, 660]
+        rect_at [1920, 1080]
+        scale 2
+        when [sure]
+      item "re-read, because the keystroke may have changed the page"
+        read
+          name screen
+    until
+      source screen
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [0, 0, 1920, 120]
+      rect_at [1920, 1080]
+      must true
+    max 1440
+    pause 5
+
+
+step "click the empty desktop"
+  input 960 540
+  settle 3
+
+
+step "and an Escape in case a panel was the thing that took it"
+  input esc
+  settle 2
+# A NOTIFICATION IS NOT DISMISSED BY A CLICK ON THE WALLPAPER. MEASURED ON RUN 44377939172, after
+# the click and the Escape had been added: 0.9088 similar, and the frame is a clean Windows desktop
+# with ONE "Settings / Searching for Display Driver" panel in the bottom-right corner. The click
+# went to the desktop; a toast belongs to the shell.
+#
+# IT EXPIRES ON ITS OWN in about thirty seconds, which is what this settles for. Waiting is the
+# honest fix: the alternative is a reference that contains a transient toast, and then the compare
+# is measuring how fast the runner is rather than whether the desktop came up.
+
+
+step "settle 45s"
+  settle 45
+
+
+step "the desktop is the one this file was written against"
+  read shot
+
+
+step "the screen is the one this file was written against"
+  # THE TASKBAR IS EXCLUDED, BECAUSE EVERY RUN PUTS DIFFERENT ICONS IN IT.
+  #
+  # MEASURED: two clean Windows desktops from two runs score 0.9555 over the whole frame and
+  # 0.9999 over everything above the taskbar. The wall paper, the two desktop icons and the
+  # notification area are identical; the PINNED ICONS AND THE CLOCK ARE NOT - one run had Firefox
+  # and Explorer pinned, the other did not, and the clocks read 9:52 and 11:13.
+  #
+  # A COMPARISON THAT FAILS ON A CHANGING CLOCK IS MEASURING THE CLOCK. What this step is for is
+  # "the desktop came up and it is this system", and the region above the taskbar says exactly that
+  # while the taskbar says what was pinned at the time.
+  #
+  # `rect` as a PIXEL pair with `rect_at`, rather than a fraction, because 1000/1080 is the edge of
+  # a taskbar that is 40 px tall at this resolution - a fraction would move with the guest's size
+  # and the taskbar's edge is what has to be excluded.
+  check
+    source shot
+    mode like
+    must
+    name matched
+    range [0.97, 1]
+    rect [0, 0, 1920, 1000]
+    rect_at [1920, 1080]
+    reference reference/desktop.png
+
+
+# THE MACHINE THAT INSTALLED IS STILL RUNNING, AND A SECOND BOOT NEEDS IT GONE FIRST.
+#
+# MEASURED on run 45184022059, which reached step 18 and stopped there:
+#
+#	reboot into the installed system: this machine is already running with different qemu
+#	arguments. One daemon holds one machine, so a boot that describes another one needs a
+#	`stop:` first - otherwise the steps below drive the guest the earlier boot started
+#
+# The installer's machine is what has been running since step 3; this step describes a DIFFERENT one
+# - no ISO, the disk at bootindex=0 with discard=unmap - so the daemon refuses rather than silently
+# driving the old guest. `stop kill` is right here because the install has already reported success
+# and the desktop has been checked: nothing is left to lose, and ACPI would ask a machine that is
+# sitting at the Windows desktop to shut down politely, which it may refuse.
+step "power the installer's machine off, because the next boot describes another one"
+  stop kill
+  timeout 120
+
+
+step "reboot into the installed system"
+  boot
+    machine "q35,accel=kvm,vmport=off"
+    args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
+    timeout 900
+step "the installed system reaches a desktop"
+  repeat
+    do
+      item
+        read
+          name screen
+    until
+      source screen
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [0, 0, 1920, 120]
+      rect_at [1920, 1080]
+      must true
+    max 360
+    pause 5
+
+
+step "shut the installed system down"
+  acpi power
+  timeout 300
+
+
+step "wait for the machine to stop"
+  wait_until stopped
+  timeout 300
+
+
+step "publish the disk"
+  save "{{ out }}"
