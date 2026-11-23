@@ -1,0 +1,59 @@
+name: windows-smoke
+
+# DOES THE PUBLISHED DISK START? Boot it, record three minutes, kill it.
+#
+# THIS IS THE CLAIM THE INSTALL LEG CANNOT MAKE. A walkthrough can answer every one of its steps and
+# still publish a disk no firmware will boot - MEASURED on android blissos 16.9.7, whose install ended
+# with "Congratulations!" and whose disk printed
+#
+#	BdsDxe: failed to load Boot0002 "UEFI QEMU HARDDISK QM00011" ... : Not Found
+#
+# because its loader was in /EFI/BLISSOS and an empty NVRAM looks only at \EFI\BOOT\BOOTX64.EFI.
+#
+# IT PUBLISHES NO DISK. `out:` is empty in the stage below, so `stage.yml` reports "no disk to
+# publish (the stage may not write one)" and the only artifact is the recording - which is what a
+# person watches after a failure. The disk it verifies is the one the install leg already published.
+#
+# SO THIS IS SAFE TO RUN AT ANY TIME: it reads a tag and writes nothing, and two runs cannot
+# overwrite each other's work.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from_tag:
+        description: >-
+          the PUBLISHED disk to boot. Empty uses the tag this repository's install leg publishes.
+        default: "windows11"
+      disks_repository:
+        description: "the ghcr repository that holds the disk"
+        default: "easydev-org/easyvm-windows"
+
+concurrency:
+  group: windows-smoke
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  smoke:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.3-dev
+      disk_gb: "25"
+      group: windows-smoke
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows11-smoke",
+            "file": "11/steps/smoke.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "",
+            "timeout": 20
+          }
+        ]
