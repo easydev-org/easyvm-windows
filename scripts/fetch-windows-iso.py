@@ -29,9 +29,17 @@ down. So each candidate is HEADed and its Content-Disposition filename is what s
     win11iot-ltsc arm64   CLIENT_IOT_LTSC_EVAL_A64
     win2025 x64           SERVER_EVAL_x64FRE_en-us       (one per language; en-us is chosen)
 
-WHY win11arm64 IS NOT A CONNECTOR PRODUCT: that API answers ONLY a Media Creation Tool for ARM64 -
-`DownloadType: 2`, never `1`. Microsoft publishes ARM64 Windows as VHDX through a different page, and
-a .exe is not something this repository can boot. `win11iot-ltsc arm64` is a real ARM64 ISO.
+THE ONLY ARM64 WINDOWS THIS REPOSITORY SUPPORTS IS `win11iot-ltsc arm64`, AND THAT IS A DECISION
+RATHER THAN A LIMITATION OF THE SCRIPT. Microsoft publishes exactly one ARM64 ISO that a virtual
+machine can install from - Windows 11 IoT Enterprise LTSC 2024, whose Evaluation Center page carries
+`CLIENT_IOT_LTSC_EVAL_A64`. Everything else on ARM64 is either a VHDX (a disk image, not a medium
+this build can boot) or a Media Creation Tool: the download connector answers `DownloadType: 2` and
+never `1` for `win11arm64`, which is why no ARM64 Pro or Home ISO appears here.
+
+SO THERE IS NO `win11 arm64` AND NO `win2025 arm64`, AND NOTHING SHOULD ADD ONE. Running an ARM64 guest
+is a second machine shape - qemu-system-aarch64, `-machine virt`, an AAVMF firmware instead of OVMF,
+and `virtio-blk-device` instead of `virtio-blk-pci` - so a second ARM64 row would be a second
+untested shape rather than a second ISO. When that shape exists, this is the one image it starts.
 
 MICROSOFT BLOCKS THIS BY IP AND SAYS SO. The connector answers "Sentinel marked this request as
 rejected." or "We are unable to complete this request at this time." Both mean the address is on a
