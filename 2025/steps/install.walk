@@ -148,7 +148,25 @@ step "and once more, for a loader that was not listening yet"
 # to it: if the menu is there the loop presses Return, and if Setup is already up the loop stops without
 # touching the keyboard. The step after this one waits for Setup's own window, so a Return pressed where
 # it was not needed is caught there rather than silently confusing the run.
-step "the firmware is either asking which device to boot, or already loading Setup"
+# THE BOOT MENU IS BEST-EFFORT, BECAUSE THE FIRMWARE IS NOT UNDER THIS WALK'S CONTROL AND ITS TIMING IS
+# NOT PREDICTABLE. FIVE MEASURED OUTCOMES FROM THE SAME ARGUMENTS:
+#
+#	45224577194 / 45224586593   the menu sat on screen for the WHOLE hour, never answered
+#	45236392481 (fix 1)         `when:` read the previous frame, so the step was SKIPPED
+#	45236392481 (fix 2)         a 320-pixel band read black: `see: 0 word(s)`
+#	9195696 (win10)             `Setup Is starting` - no menu, and Setup HAD started
+#	9195696 (win2025)           `see: 0 word(s)` for fifteen minutes, i.e. a BLACK SCREEN
+#
+# A BLACK SCREEN IS NEITHER A FAILURE NOR A MENU. It is the moment between the firmware handing control
+# to the medium and Setup drawing - and on win2025 it outlasted this step's budget, so the step reported
+# a failure for a guest that was simply starting. The step after this one waits for Setup's own window
+# and has a far larger budget, which is where "did the guest come up" belongs.
+#
+# `optional true` IS THE FIX AND IT IS EXACTLY WHAT THAT KEY IS FOR: this step may fail without failing
+# the stage. When the menu appears it is answered; when the screen is black it gives up quietly and lets
+# the next step do the waiting.
+step "answer the firmware's boot menu, if one appears"
+  optional true
   repeat
     do
       item "read the screen"
@@ -161,18 +179,16 @@ step "the firmware is either asking which device to boot, or already loading Set
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      # EITHER OUTCOME IS A REASON TO STOP WAITING. The menu's footer, or the first words Setup prints
-      # once the medium has been chosen - both mean "the firmware has done its job".
-      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files]]
-    max 180
+      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup]]
+    max 120
     pause 5
 
 
-step "answer the menu, if there is one"
+step "press Return, which is what the menu's own footer asks for"
   input ret
   settle 15
-  # THE KEY IS ONLY SENT WHEN THE MENU IS THE THING ON SCREEN. Ungated, it would land on Setup's own
-  # first page, whose default control is not always "continue".
+  # SENT ONLY WHEN THE MENU IS ON SCREEN. An ungated key lands on Setup's first page, whose default
+  # control is not always "continue".
   when [select, boot, device]
 
 
