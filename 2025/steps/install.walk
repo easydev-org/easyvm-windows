@@ -95,13 +95,41 @@ step "and once more, for a loader that was not listening yet"
 #
 # `ret` IS THE KEY THE FOOTER NAMES ("ENTER to select boot device"). The step is gated on the footer's
 # words, so a firmware that boots straight through is not typed into.
-step "the firmware is asking which device to boot, if it is"
+# THE MENU IS WAITED FOR AND THEN ANSWERED, BECAUSE A ONE-SHOT `when:` CANNOT DO BOTH.
+#
+# MEASURED TWICE. The first version of this step was `input ret; settle 5; when [select, boot, device]`
+# and run 45236392481 still sat on the very same picture at t=3000:
+#
+#	Please select boot device: ... ENTER to select boot device ... ESC to exit
+#
+# - because `when:` gates on the frame the PREVIOUS step captured. That step is the third `ret`, sent
+# while the firmware was still printing, so the gate was false and the whole step was SKIPPED. The key
+# was never sent.
+#
+# THIS IS THE SAME DEFECT AS fedora's login prompt, in a different walk: a gate that can look at one
+# frame cannot express "wait for this, then act". It is a loop now - wait for the footer's own words,
+# press Return, and let the step after this one check that Setup came up.
+step "the firmware is asking which device to boot"
+  repeat
+    do
+      item "read the screen"
+        read
+          name firmware
+    until
+      bind asking
+      source firmware
+      mode text
+      rect [0, 380, 1920, 700]
+      rect_at [1920, 1080]
+      scale 1
+      words [[select, boot, device]]
+    max 60
+    pause 5
+
+
+step "press Return on the highlighted DVD"
   input ret
-  settle 5
-  rect [0, 380, 1920, 700]
-  rect_at [1920, 1080]
-  scale 1
-  when [select, boot, device]
+  settle 15
 
 
 step "Setup is on screen"
