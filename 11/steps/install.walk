@@ -151,8 +151,7 @@ step "answer a quit dialog, if one is up"
   rect_at [1920, 1080]
   # SCALE 2, BECAUSE SCALE 1 DOES NOT READ THE WORD THIS GATE NEEDS. Read back from the recording:
   # scale 1 gives "yeusureyouwantto au?" - no "quit" in it, so the gate would never open - and
-  # scale 2 gives "Are you sure you want to quit?". Escape is not Enter: on this page the focused
-  # control is `Cancel`, and Escape does not activate a focused button.
+  # scale 2 gives "Are you sure you want to quit?".
   scale 2
   settle 15
   when [quit]
@@ -166,6 +165,25 @@ step "answer it again, if it came back"
   rect_at [1920, 1080]
   scale 2
   settle 15
+  when [quit]
+
+# ESCAPE DOES NOT CLOSE THIS DIALOG, AND THAT IS MEASURED RATHER THAN GUESSED. Run 45166271464 sat
+# on it for ninety minutes with the desktop check answering `0.0000 similar` on every frame - the
+# install was fine, and a modal had it:
+#
+#	Windows 11 Setup
+#	Are you sure you want to quit?
+#	 [ Yes ]   [ No ]        <- `No` is focused, and the whole screen is behind it
+#
+# The screen in the recording shows `No` with a focus rectangle, so ENTER is what dismisses it. An
+# `esc` here does nothing at all - which is why the two steps above never cleared it, and why the
+# desktop never appeared while the guest sat waiting behind a question nobody answered.
+step "dismiss the quit dialog with the focus that is already on No"
+  input ret
+  settle 3
+  rect [820, 460, 1520, 660]
+  rect_at [1920, 1080]
+  scale 2
   when [quit]
 # THE DESKTOP IS DECIDED BY THE REFERENCE IMAGE, NOT BY THREE BRIGHTNESS THRESHOLDS.
 #
@@ -190,8 +208,23 @@ step "answer it again, if it came back"
 
 
 step "wait for the desktop"
+  # A DIALOG CAN RETURN AT ANY POINT DURING THE INSTALL, SO THE QUESTION IS ASKED ON EVERY ROUND.
+  # The two steps above answer it once, before the wait; the packer is free to raise it again while
+  # the image is being applied, and MEASURED on run 45166271464 that is exactly what happened - the
+  # screen kept showing "Are you sure you want to quit?" while this loop read 0.0000 similarity for
+  # ninety minutes. Answering it here costs one keystroke per round and needs no new step.
   repeat
     do
+      item "clear any quit dialog before looking at the screen"
+        # A BARE `ret` WOULD PRESS WHATEVER HAS FOCUS ONCE THE DESKTOP IS UP, so the keystroke is
+        # gated on the dialog's own words. `when:` reads the frame the previous round captured, which
+        # is the one place this loop already has.
+        input ret
+        settle 1
+        rect [820, 460, 1520, 660]
+        rect_at [1920, 1080]
+        scale 2
+        when [quit]
       item
         read
           name screen
