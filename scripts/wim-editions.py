@@ -109,29 +109,68 @@ def read_wim(path):
     return editions_from_xml(decode_xml(run(["wimlib-imagex", "info", "--xml", path])))
 
 
+def list_members(iso):
+    """Every member path on the medium, lower-cased, from `7z l`.
+
+    THE LISTING IS DONE WITHOUT A MEMBER FILTER, AND THAT IS THE FIX FOR A MEASURED FAILURE.
+
+    `p7zip` 16.02 - what `apt-get install p7zip-full` puts on an ubuntu runner - treats a trailing
+    member argument differently from 7-Zip 24/26: `7z l -ba image.iso sources/install.wim` answers with
+    NOTHING and exit status 0, so "is the member there" reads as "no". MEASURED on run 45217061352,
+    whose answer job printed
+
+        windows.iso: no sources/install.wim and no sources/install.esd on this medium
+
+    for a 6.1 GB Windows 10 ISO that this same script reads correctly under 7-Zip 26. A listing with no
+    filter is the same call on both, so the match happens here instead of in 7z's argument parsing.
+    """
+    out = subprocess.run(["7z", "l", "-ba", "-slt", iso], capture_output=True, text=True)
+    if out.returncode != 0:
+        # `-slt` IS PREFERRED BECAUSE IT PRINTS `Path = ...` one per member, with no column layout to
+        # parse; a build without it still has the plain table, so the fallback reads that.
+        out = subprocess.run(["7z", "l", "-ba", iso], capture_output=True, text=True)
+        if out.returncode != 0:
+            raise SystemExit("%s: 7z could not list this medium: %s"
+                             % (iso, (out.stderr or out.stdout).strip()[:300]))
+    paths = set()
+    for line in out.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("Path = "):
+            paths.add(line[len("Path = "):].strip().lstrip("./").lower())
+        else:
+            # THE PLAIN TABLE'S LAST COLUMN IS THE PATH, and it is the field after the time and the
+            # two sizes - so split on runs of spaces and take what follows the last size column.
+            parts = line.split()
+            if len(parts) >= 6 and (parts[2].isdigit() or parts[3].isdigit()):
+                paths.add(" ".join(parts[5:]).strip().lstrip("./").lower())
+    return paths
+
+
 def find_image(iso):
     """The install image inside an ISO, extracted to a temporary file.
 
     THE EXTRACTION IS THE POINT: `wimlib-imagex` cannot read a member of an ISO, and mounting one needs
-    root. `7z` writes the single member out by its full path.
+    root. `7z` writes the single member out by its full path, and the path it uses is whatever the
+    medium has - `sources/install.wim` under both ISO9660 and Joliet.
     """
+    members = list_members(iso)
     for name in IMAGE_NAMES:
-        out = subprocess.run(["7z", "l", "-ba", iso, name], capture_output=True, text=True)
-        if out.returncode != 0 or not out.stdout.strip():
+        if name.lower() not in members:
             continue
         tmp = tempfile.mkdtemp(prefix="wim-editions-")
-        dest = os.path.join(tmp, os.path.basename(name))
         subprocess.run(["7z", "x", "-y", "-o" + tmp, iso, name],
                        capture_output=True, text=True, check=False)
-        if not os.path.isfile(dest):
-            # 7z KEEPS THE PATH (`sources/install.wim`) when the member is named with one.
-            nested = os.path.join(tmp, *name.split("/"))
-            if os.path.isfile(nested):
-                return nested
-            raise SystemExit("%s: 7z listed %s but did not extract it" % (iso, name))
-        return dest
-    raise SystemExit("%s: no %s and no %s on this medium, so there is no edition table to read"
-                     % (iso, IMAGE_NAMES[0], IMAGE_NAMES[1]))
+        # 7z KEEPS THE PATH (`sources/install.wim`) when the member is named with one, so the walk
+        # below looks in both places rather than assuming one.
+        for candidate in (os.path.join(tmp, os.path.basename(name)),
+                          os.path.join(tmp, *name.split("/"))):
+            if os.path.isfile(candidate):
+                return candidate
+        raise SystemExit("%s: 7z listed %s but did not extract it" % (iso, name))
+    raise SystemExit("%s: no %s and no %s on this medium, so there is no edition table to read\n"
+                     "  its members are: %s"
+                     % (iso, IMAGE_NAMES[0], IMAGE_NAMES[1],
+                        ", ".join(sorted(members)[:12]) or "(none)"))
 
 
 def normalise(text):
