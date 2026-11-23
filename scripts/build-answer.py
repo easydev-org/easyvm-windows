@@ -230,6 +230,49 @@ def has_files(path):
         return False
 
 
+def seven_zip_version():
+    """The build's own version line, for a failure message that has to name it."""
+    try:
+        out = subprocess.run(["7z"], capture_output=True, text=True)
+        for line in (out.stdout or out.stderr).splitlines():
+            if "7-Zip" in line:
+                return line.strip()
+    except OSError:
+        pass
+    return "(7z could not be run)"
+
+
+def members_written(root):
+    """Every file currently under a directory, relative to it."""
+    for base, _dirs, files in os.walk(root):
+        for name in files:
+            yield os.path.relpath(os.path.join(base, name), root).replace(os.sep, "/")
+
+
+def find_tree(root, member_dir):
+    """The directory that holds `member_dir`'s files, wherever `7z` decided to put it.
+
+    CASE-INSENSITIVE AND STRUCTURE-AGNOSTIC ON PURPOSE. `7z` writes members under their own paths,
+    which differ between builds and between the ISO9660 and Joliet trees: the same four drivers arrive
+    as `viostor/w11/amd64/...` from one and as `viostor/w11/amd64/...` from another. What is stable is
+    the SHAPE - a directory whose name is `amd64` under a `w11`, `w10` or `2k19` under the driver - so
+    the walk looks for that shape rather than for one exact spelling.
+    """
+    parts = member_dir.split("/")
+    if len(parts) != 3:
+        return None
+    driver, version, leaf = (p.lower() for p in parts)
+    for base, dirs, files in os.walk(root):
+        if os.path.basename(base).lower() != leaf:
+            continue
+        parent = os.path.basename(os.path.dirname(base)).lower()
+        grand = os.path.basename(os.path.dirname(os.path.dirname(base))).lower()
+        if parent == version and grand == driver and any(not os.path.isdir(os.path.join(base, f))
+                                                          for f in files):
+            return base
+    return None
+
+
 def extract_drivers(virtio_iso, stage):
     """Lay the four driver trees out flat, as `$WinPEDriver$/<driver>/<files>`.
 
@@ -256,44 +299,50 @@ def extract_drivers(virtio_iso, stage):
     # So the listing is taken WITHOUT a filter - the same call `wim-editions.py` was fixed to make -
     # and each wanted directory is handed to `7z x` as the list of members that matched it.
     members = list_members(virtio_iso)
+    # A LISTING THAT FOUND NOTHING IS SAID OUT LOUD, BECAUSE THE NEXT LINE'S FAILURE IS MISLEADING.
+    # "no drivers were extracted" for a medium whose trees are present sends a reader to the driver
+    # names; the real question is whether `7z l` could read the ISO at all.
+    if not members:
+        raise SystemExit(
+            "7z listed no members at all from %s, so the driver trees cannot be found.\n"
+            "  7z version: %s" % (virtio_iso, seven_zip_version()))
 
     found = []
     for driver in DRIVERS:
         for version in DRIVER_VERSIONS:
-            prefix = f"{driver}/{version}/amd64/"
-            # CASE FOLDED AT THE COMPARISON, NEVER IN THE PATH HANDED BACK TO 7z.
-            wanted = [m for m in members
-                      if m.lower().startswith(prefix.lower()) and not m.endswith("/")]
-            if not wanted:
-                continue
-            # THE MEMBER LIST GOES IN A FILE, BECAUSE `-i@-` DOES NOT READ STDIN. MEASURED: it answers
-            # "The file operation error for listfile errno=2 : No such file or directory -", i.e. it
-            # resolved the literal name `-` as a path. `-i@<file>` is the form that works.
+            # THE VERSION DIRECTORIES ARE MATCHED AS DIRECTORIES, NOT AS A FILE PREFIX.
             #
-            # THE LIST IS ALSO WHAT KEEPS THE COMMAND LINE SHORT: a driver directory is twenty-odd
-            # files and an ISO's names are the publisher's, so they are neither quoted nor expanded.
-            with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as fh:
-                fh.write("\n".join(wanted) + "\n")
-                listfile = fh.name
-            try:
-                subprocess.run(["7z", "x", "-y", f"-o{winpe}", f"-i@{listfile}", virtio_iso],
+            # MEASURED ON RUN 45219352187: this function still extracted nothing on a runner after
+            # being rewritten to list the medium first, and the listing was not the problem - the
+            # EXTRACTION was. `7z x -i@<list>` is honoured by 7-Zip 26 and quietly does nothing useful
+            # on `p7zip` 16.02, and every fallback here then looked for files that had never been
+            # written. The medium was never at fault.
+            #
+            # SO THE EXTRACTION TAKES A DIRECTORY NAME AND NOTHING ELSE. `7z x iso 'dir/*'` is the one
+            # form both builds have always honoured, and the files are found afterwards by walking
+            # what actually landed rather than by assuming a path.
+            member_dir = f"{driver}/{version}/amd64"
+            if not any(m.lower() == member_dir.lower() for m in members):
+                continue
+            before = set(members_written(winpe))
+            subprocess.run(["7z", "x", "-y", f"-o{winpe}", f"{member_dir}/*", virtio_iso],
+                           capture_output=True, text=True)
+            source = find_tree(winpe, member_dir)
+            if source is None:
+                # SECOND ATTEMPT WITH NO PATTERN AT ALL: `7z x iso` extracts everything, which is
+                # slower and cannot be ignored by any build. A virtio-win ISO is 877 MB and this only
+                # runs when the patterned form produced nothing.
+                subprocess.run(["7z", "x", "-y", f"-o{winpe}", virtio_iso],
                                capture_output=True, text=True)
-            finally:
-                os.unlink(listfile)
-            source = os.path.join(winpe, driver, version, "amd64")
-            if not has_files(source):
-                # THE FILES MAY HAVE COME OUT FLAT, at the path the member names rather than under a
-                # recreated directory - `7z` does both depending on the member list and the build.
-                alt = os.path.join(winpe, *prefix.rstrip("/").split("/"))
-                if has_files(alt):
-                    source = alt
-                else:
-                    continue
+                source = find_tree(winpe, member_dir)
+            if source is None:
+                continue
             target = os.path.join(winpe, driver)
             os.makedirs(target, exist_ok=True)
             for entry in os.listdir(source):
                 os.replace(os.path.join(source, entry), os.path.join(target, entry))
-            # the now-empty version directories are not wanted in the image
+            # EVERY VERSION DIRECTORY OF THIS DRIVER GOES, not only the one just used: an earlier
+            # attempt may have left another, and a stray tree of 8.3 names is a file Setup may pick.
             shutil.rmtree(os.path.join(winpe, driver, version), ignore_errors=True)
             found.append(driver)
             break
