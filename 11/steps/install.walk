@@ -28,9 +28,8 @@ step "create the empty disk"
   disk_gb 128
 
 
-step "build the answer CD"
+step "the answer CD this guest installs with"
   fetch answer_iso
-  template 11/answer/Autounattend.xml
 
 
 step "boot the installer"
@@ -166,7 +165,7 @@ step "Setup is on screen"
 
 
 step "answer a quit dialog, if one is up"
-  input Escape
+  input esc
   rect [820, 460, 1520, 660]
   rect_at [1920, 1080]
   # SCALE 2, BECAUSE SCALE 1 DOES NOT READ THE WORD THIS GATE NEEDS. Read back from the recording:
@@ -181,7 +180,7 @@ step "answer a quit dialog, if one is up"
 
 
 step "answer it again, if it came back"
-  input Escape
+  input esc
   rect [820, 460, 1520, 660]
   rect_at [1920, 1080]
   scale 2
