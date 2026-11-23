@@ -166,7 +166,21 @@ step "and once more, for a loader that was not listening yet"
 # `optional true` IS THE FIX AND IT IS EXACTLY WHAT THAT KEY IS FOR: this step may fail without failing
 # the stage. When the menu appears it is answered; when the screen is black it gives up quietly and lets
 # the next step do the waiting.
-step "answer the firmware's boot menu, if one appears"
+# "NO BOOTABLE OPTION" IS A THIRD OUTCOME, AND IT IS RECOVERABLE.
+#
+# MEASURED on run 45256910272 (win2025): the leg read
+#
+#	BdsDxe: No bootable option or device was found.  Press any key ...
+#
+# for its whole `Setup is on screen` budget. The firmware had looked at the DVD and decided it could not
+# start it - which happens when OVMF enumerates the medium before its El Torito entry is readable. The
+# walk then sat there, because `optional` had already let the boot-menu step give up quietly.
+#
+# SO THE KEY IS PRESSED UNCONDITIONALLY AND THE SCREEN IS THEN RE-READ. On the menu, Enter selects the
+# highlighted DVD; on "No bootable option", ANY key returns to that same menu with the DVD listed again.
+# Both are the same keystroke and both end at Setup, so one `input ret` serves them and the loop after it
+# waits for whichever of the four screens comes next.
+step "the firmware's boot menu, Setup loading, or a failed DVD"
   optional true
   repeat
     do
@@ -180,17 +194,33 @@ step "answer the firmware's boot menu, if one appears"
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup]]
+      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [No, bootable, option]]
     max 120
     pause 5
 
 
-step "press Return, which is what the menu's own footer asks for"
+step "press a key: Enter selects the menu's DVD, and any key leaves a failed boot"
   input ret
   settle 15
-  # SENT ONLY WHEN THE MENU IS ON SCREEN. An ungated key lands on Setup's first page, whose default
-  # control is not always "continue".
-  when [select, boot, device]
+
+
+step "the firmware re-reads the medium, which is what that key is for"
+  optional true
+  repeat
+    do
+      item "read the screen"
+        read
+          name after_key
+    until
+      bind recovered
+      source after_key
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      scale 1
+      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup]]
+    max 120
+    pause 5
 
 
 step "Setup is on screen"
