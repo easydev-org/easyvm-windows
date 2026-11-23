@@ -23,7 +23,7 @@ on:
     inputs:
       disks_repository:
         description: "the ghcr repository that holds the disks"
-        default: "easydev-org/easyvm-windows"
+        default: "windows11-vm-configure"
       from_tag:
         description: >-
           the PUBLISHED disk this stage continues from (default windows11-vm-configure)
