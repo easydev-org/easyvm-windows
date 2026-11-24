@@ -59,19 +59,53 @@ step "wait for the firmware to offer the DVD"
 # RETURN DOES NOT DO THAT. On "Press any key" it is the key the prompt is asking for, and on Setup's
 # own pages it activates the default control rather than Cancel - which is why the three presses are
 # `ret` here and were `esc` for as long as the dialog was blamed on something else.
-step "press a key so the loader takes it"
-  input ret
-  settle 1
-
-
-step "press it again, because the prompt is emitted more than once"
-  input ret
-  settle 1
-
-
-step "and once more, for a loader that was not listening yet"
-  input ret
-  settle 2
+# THE MEDIUM ASKS FOR A KEY IN A FIVE-SECOND WINDOW, AND THREE PRESSES SENT AT ONCE MISS IT.
+#
+# MEASURED from run 45257383788's own recording, frame at t=3000 - ninety-four minutes of this screen:
+#
+#	BdsDxe: No bootable option or device was found.
+#	BdsDxe: Press any key to enter the Boot Manager Menu.
+#	        Press any key to boot from CD or DVD......
+#
+# THE DVD WAS OFFERED AND THE PROMPT WAS UP; nobody pressed a key inside its window. The three `ret`
+# presses that were supposed to do it are sent in the first four seconds after the CONSOLE prints
+# `DVD-ROM` - and the video prompt appears later than that. So the window opened after the keys were
+# spent, the firmware fell through to "No bootable option", and every Windows family that reached this
+# point sat here until its budget ran out.
+#
+# THAT IS WHY windows10 AND ltsc BOTH REPORTED "THE WALKTHROUGH DID NOT FINISH IN TIME" and why
+# windows2025 kept reading "No bootable option": one missed five-second window, three families.
+#
+# SO THE PROMPT IS WAITED FOR AND ANSWERED WHEN IT IS UP. The loop reads the screen every two seconds
+# and presses Return the moment `Press any key` appears - which is what a person sitting at this screen
+# does - and it stops as soon as Setup or the firmware's menu takes over. `optional` because the prompt
+# is the guest's, not this walk's: an image that boots straight through must not fail here.
+step "take the medium's boot prompt, whenever it appears"
+  optional true
+  repeat
+    do
+      item "read the screen"
+        read
+          name probe
+      item "press a key, because the medium is asking for one"
+        input ret
+        settle 2
+        rect [0, 0, 1920, 1080]
+        rect_at [1920, 1080]
+        scale 1
+        when [Press, any, key]
+    until
+      bind taken
+      source probe
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      scale 1
+      # ANY OF THESE MEANS THE PROMPT'S MOMENT HAS PASSED: Setup is loading, the firmware is asking
+      # which device to boot, or Setup's own window is up.
+      words [[Setup, Is, starting], [Windows, is, loading, files], [select, boot, device], [Windows, Setup], [Windows, Server]]
+    max 90
+    pause 2
 
 
 # THE FIRMWARE'S OWN BOOT MENU IS A STOPPING POINT, AND THIS MEDIUM LANDS ON IT EVERY TIME.
