@@ -1,13 +1,17 @@
 # The reference pictures this directory's `ssh.walk` compares against
 
-`desktop.png` IS NOT HERE YET, and that is a real gap rather than an oversight. Every Windows family
-draws a different wallpaper and taskbar, so the picture cannot be borrowed from another directory - a
-comparison against the wrong one either fails on a correct desktop or has to be loosened until it
-cannot fail.
+`desktop.png` IS HERE, and it came from the first install of THIS family that reached a desktop:
+2026-11-24, the frame at which `Windows 11 IoT Enterprise LTSC Evaluation` (build 26100) showed its
+wallpaper, its centred taskbar and the evaluation watermark in the corner.
 
-**It comes from the first install of THIS family that reaches a desktop**, which is what the install
-stage's own recording is for: run `windows-install.yml`, take the frame where the desktop is up, and
-commit it here as `desktop.png`.
+Every Windows family draws a different wallpaper and taskbar, so this picture is not shared with
+`11/`, `10/` or `2025/` - a comparison against another family's desktop either fails on a correct
+desktop or has to be loosened until it cannot fail.
 
-`ssh.walk` is the stage AFTER `install`, so nothing is blocked by the picture being absent - the stage
-says so at its first step instead of spending 180 rounds reading `0.0000 similar`.
+WHAT MAKES IT A DESKTOP RATHER THAN A MENU OR A PROGRESS PAGE, measured: 3134 distinct colours in its
+top 120 rows. windows 11's reference carries 3058 there, a firmware menu far fewer, and the OOBE's
+"Please keep your computer on" frame is a black field with one line of white text.
+
+`install.walk` uses it as the verdict for `wait for the desktop`, and `ssh.walk` for its own first
+step. Both crop the top 120 rows, which is where a desktop is recognisably a desktop and an installer
+page is recognisably not.
