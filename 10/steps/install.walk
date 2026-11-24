@@ -232,6 +232,24 @@ step "take the row the highlight is on"
     pause 2
 
 
+# THE STEP ASKS WHETHER THE MENU IS GONE, AND `Press any key to boot from CD or DVD` IS THAT ANSWER.
+#
+# MEASURED on run 45413523504 (ltsc, the first leg with the boot-menu loop fixed): the choice WAS taken,
+# the menu WAS gone, and this step read
+#
+#	see: 9 word(s): Press any key to boot from CD or DVD....
+#	the menu is gone ... [until]: __until__ = false
+#	    (none of "Setup Is starting" or "Windows is loading files" or "Windows Setup" or "Windows Server"
+#	     in "Press any key to boot from CD or DVD....")
+#
+# It then read `UEFI QEMU DVD-ROM` for the rest of its hundred and twenty attempts. WHAT HAD HAPPENED is
+# the whole failure: the prompt is up for about five seconds, nothing pressed a key inside that window,
+# the firmware fell back to its own menu, and the step that exists to answer the prompt ran AFTERWARDS
+# against a menu that had already returned.
+#
+# SO THE PROMPT'S OWN LINE IS ACCEPTED HERE. This step's question is "did the menu's choice take effect"
+# and a DVD asking to be booted proves it did - it is the medium talking, not the menu. The step after
+# this one presses the key the prompt is asking for, and it now gets there while the prompt is up.
 step "the menu is gone, because the choice was taken"
   optional true
   repeat
@@ -246,9 +264,9 @@ step "the menu is gone, because the choice was taken"
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      words [[Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [Windows, Server]]
+      words [[Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [Windows, Server], [Press, any, key]]
     max 120
-    pause 5
+    pause 2
 
 
 # THE MEDIUM ASKS FOR A KEY IN A FIVE-SECOND WINDOW, AND THIS WALK HAD NO STEP THAT PRESSES ONE.
