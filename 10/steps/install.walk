@@ -287,20 +287,32 @@ step "the menu is gone, because the choice was taken"
 # read every two seconds, press Return the moment `Press any key` is on screen, and stop as soon as
 # Setup's own words appear. `optional` because the prompt belongs to the guest - an image that boots
 # straight through must not fail here.
+# THE PRESS COMES FIRST IN EVERY ROUND, BECAUSE READING THE SCREEN COSTS MORE THAN THE WINDOW.
+#
+# MEASURED on run 45429023654, the first leg with the `the menu is gone` fix: that step now passes in
+# ONE attempt (it accepted `Press any key`), and this step then read the prompt on frame 000625 and
+# pressed `ret` - and the NEXT frame, 000631, was already the firmware's menu again. SIX SECONDS
+# BETWEEN TWO CAPTURES, against a prompt window of about five.
+#
+# WHERE THE SIX SECONDS GO: the round used to `read` (a screendump and a whole-frame OCR), then run a
+# gated `input ret` whose `when:` RE-READS THE SCREEN - a second OCR - and then `settle 2`. So the
+# keystroke left about four seconds after the frame that justified it, which is most of the window.
+#
+# SO THE ORDER IS INVERTED. The loop presses Return, waits one second, and THEN reads to ask whether it
+# can stop. A stray Return during boot is harmless in every state this step can see: on the boot menu
+# it takes the highlighted row - which is the DVD, the row an earlier step just chose - and during
+# Setup's own loading it is ignored. `ret` repeated about a second apart is also what the hand
+# measurement on the pod found takes: one press is a coin flip, six one second apart were taken.
 step "take the medium's boot prompt, whenever it appears"
   optional true
   repeat
     do
-      item "read the screen"
+      item "press a key, because the medium may be asking for one"
+        input ret
+        settle 1
+      item "read the screen, to see whether the prompt's moment has passed"
         read
           name probe
-      item "press a key, because the medium is asking for one"
-        input ret
-        settle 2
-        rect [0, 0, 1920, 1080]
-        rect_at [1920, 1080]
-        scale 1
-        when [Press, any, key]
     until
       bind taken
       source probe
@@ -311,7 +323,7 @@ step "take the medium's boot prompt, whenever it appears"
       # ANY OF THESE MEANS THE PROMPT'S MOMENT HAS PASSED.
       words [[Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [Windows, Server]]
     max 90
-    pause 2
+    pause 1
 
 
 step "Setup is on screen"
