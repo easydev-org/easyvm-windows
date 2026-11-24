@@ -144,9 +144,40 @@ step "the firmware's boot menu is up, if it has one"
 #
 # SO THE CLICK IS (845,435): the centre of the highlighted row, which is also the text's own middle.
 # A selected row is a band, not a baseline - and the band is what a pointer has to land inside.
-step "click the DVD row, which is what the menu is waiting for"
+# THE MENU IS A BdsDxe TEXT MENU AND IT ANSWERS TO `ENTER`, NOT TO A POINTER.
+#
+# MEASURED on run 45336245376 (ltsc), whose last frame is the menu at t=2500 AND t=3100 - unchanged,
+# with the DVD row still highlighted and the footer still reading
+#
+#	Please select boot device:
+#	  UEFI QEMU DVD-ROM QM00011        <- highlighted, exactly as the click left it
+#	  ...
+#	  ? and ? to move selection
+#	  ENTER to select boot device      <- THIS LINE
+#	  ESC to exit
+#
+# A click DID move the highlight to the DVD row, and then nothing happened, because this console
+# draws its own selection and reads the KEYBOARD. It has no pointer device at all: the only inputs it
+# knows are the arrows and ENTER, which is what its footer says in plain words.
+#
+# SO THE CLICK IS KEPT - it is how the row becomes selected without guessing at arrow counts - and
+# RETURN is pressed to take the selection. MEASURED on run 45329047801 (windows10), where the reply
+# loop's own `ret` was what finally produced `Setup Is starting`: the keystroke is the thing this menu
+# acts on, and the click is what decides which row the keystroke takes.
+step "put the highlight on the DVD row"
   input
     click [845, 435]
+  settle 3
+  rect [700, 360, 1220, 720]
+  rect_at [1920, 1080]
+  scale 1
+  when [select, boot, device]
+
+
+# ... AND RETURN TAKES IT. Separate from the click because a step carries one `input:`, and because
+# the two halves answer different questions: the click says which row, the key says "this one".
+step "take the row the highlight is on"
+  input ret
   settle 20
   rect [700, 360, 1220, 720]
   rect_at [1920, 1080]
