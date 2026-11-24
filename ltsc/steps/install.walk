@@ -106,6 +106,41 @@ step "wait for the firmware to offer the DVD"
 # THE FIRST STEP WAITS FOR THE MENU, THE SECOND ANSWERS IT, THE THIRD PROVES THE ANSWER TOOK. Each can
 # be true independently: a guest may show no menu at all (windows 11's own OVMF picks the DVD unaided),
 # so all three are `optional`.
+# THE MENU ALREADY HAS THE DVD HIGHLIGHTED, SO THE ONE THING TO DO IS PRESS ENTER.
+#
+# MEASURED on runs 45442239506 (windows10) and 45442265263 (ltsc), whose frames at frame-000616 and
+# t=600 are the same picture:
+#
+#	+------------------------------------------------------+
+#	| Please select boot device:                            |
+#	| UEFI QEMU DVD-ROM QM00011      <- HIGHLIGHTED, row 1  |
+#	| UEFI Misc Device                                      |
+#	| UEFI QEMU QEMU USB HARDDRIVE 1-0000:00:03.0-3         |
+#	| ...   EFI Firmware Setup / Internal Shell / PXE / HTTP |
+#	+------------------------------------------------------+
+#	| (up)(down) to move selection                          |
+#	| ENTER to select boot device                           |
+#	| ESC to exit                                           |
+#	+------------------------------------------------------+
+#
+# THE DVD IS ROW ONE AND ALREADY SELECTED. `ENTER to select boot device` is the menu's own instruction.
+#
+# WHAT WAS HERE BEFORE, AND WHY IT COST BOTH LEGS: three steps that clicked (845,435) to "put the
+# highlight on the DVD row", pressed Return, and then decided the menu was gone. The click was gated on
+# `when: [select, boot, device]`, and these runs are the first where a gate on an ACTION step was ever
+# read at all (before easyvm 96ff5f2 the dispatcher ran `input` and never looked at `when`). Their logs
+# say what the gate decided:
+#
+#	skipped: the screen does not say "select boot device"
+#
+# so the click never happened. Nothing needed it - the highlight was already right - but the step that
+# CONFIRMED the highlight was gone (`take the row`'s `until` read `0 word(s)` and called that "the menu
+# is gone") declared success on a blank frame, and the leg went on to press Return into whatever the
+# firmware had left on screen. windows10 then sat on `BdsDxe: No bootable option or device was found.`
+# for 6588 seconds and ltsc's Setup came up only to fail with 0x40031 on a stale answer ISO.
+#
+# SO THERE IS ONE STEP AND ONE KEY. Wait for the menu's own title, press Return, and let the step after
+# this one decide whether the medium took it.
 step "the firmware's boot menu is up, if it has one"
   optional true
   repeat
@@ -114,91 +149,32 @@ step "the firmware's boot menu is up, if it has one"
         read
           name menu
     until
-      bind shown
+      bind up
       source menu
       mode text
       rect [700, 360, 1220, 720]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device]]
+      # THE TITLE'S OWN WORDS. `Please select boot device:` reads as exactly these three on the frame
+      # above; the old gate asked for the same three and the OCR of THAT frame also had them, so the
+      # skip was the dispatcher, not the reading.
+      words [[select, boot, device], [Boot, Manager]]
     max 120
-    pause 5
+    pause 2
 
 
-# THE DVD ROW'S CENTRE IS (845,435), MEASURED PIXEL BY PIXEL FROM THE RECORDING.
+# `ENTER to select boot device` IS THE MENU'S OWN INSTRUCTION, AND THE DVD IS ROW ONE.
 #
-# TWO WRONG COORDINATES BEFORE THIS ONE, AND BOTH WERE GUESSES READ OFF A SCREENSHOT BY EYE:
-#
-#	(950,416)  the box's horizontal RULE line. Rows around it: y 416 is 213 bright pixels spanning the
-#	           whole width - that is the rule, not text. The click landed on nothing the firmware counts,
-#	           the menu lost focus, and the legs then read `BdsDxe: No bootable option or device` for
-#	           the rest of their budget.
-#	(950,398)  the TITLE. `Please select boot device:` is centred, x 848..1052 - and the reason it looks
-#	           like a row is that a centred 204-px string and a left-aligned 197-px row have the same
-#	           width. Reading only widths is how the first two mistakes were made.
-#
-# WHAT THE FRAME ACTUALLY SHOWS, by scanning every row for bright and dark pixels:
-#
-#	y 426..444   the SELECTED ROW's inverse video: dark pixels span x 744..1179, i.e. the whole row
-#	y 429..440   the text on it, x 745..942   -> `UEFI QEMU DVD-ROM QM00011`
-#	y 448..459   the next row, x 745..870     -> `UEFI Misc Device`
-#
-# SO THE CLICK IS (845,435): the centre of the highlighted row, which is also the text's own middle.
-# A selected row is a band, not a baseline - and the band is what a pointer has to land inside.
-# THE MENU IS A BdsDxe TEXT MENU AND IT ANSWERS TO `ENTER`, NOT TO A POINTER.
-#
-# MEASURED on run 45336245376 (ltsc), whose last frame is the menu at t=2500 AND t=3100 - unchanged,
-# with the DVD row still highlighted and the footer still reading
-#
-#	Please select boot device:
-#	  UEFI QEMU DVD-ROM QM00011        <- highlighted, exactly as the click left it
-#	  ...
-#	  ? and ? to move selection
-#	  ENTER to select boot device      <- THIS LINE
-#	  ESC to exit
-#
-# A click DID move the highlight to the DVD row, and then nothing happened, because this console
-# draws its own selection and reads the KEYBOARD. It has no pointer device at all: the only inputs it
-# knows are the arrows and ENTER, which is what its footer says in plain words.
-#
-# SO THE CLICK IS KEPT - it is how the row becomes selected without guessing at arrow counts - and
-# RETURN is pressed to take the selection. MEASURED on run 45329047801 (windows10), where the reply
-# loop's own `ret` was what finally produced `Setup Is starting`: the keystroke is the thing this menu
-# acts on, and the click is what decides which row the keystroke takes.
-step "put the highlight on the DVD row"
-  input
-    click [845, 435]
-  settle 3
-  rect [700, 360, 1220, 720]
-  rect_at [1920, 1080]
-  scale 1
-  when [select, boot, device]
-
-
-# ... AND RETURN TAKES IT, REPEATEDLY, BECAUSE ONE PRESS IS NOT ALWAYS SAMPLED.
-#
-# MEASURED BY HAND ON THE POD, 2026-11-24, on this exact menu with the DVD row highlighted:
-#
-#	one `ret`           the menu did not move
-#	`kp_enter`          the menu did not move
-#	arrow down / up     the highlight moved - the keyboard WAS connected
-#	six `ret`s, 1s apart  the firmware took it, TianoCore loaded, Setup started
-#
-# So the input path is sound and the DOWN/UP edge is what this console misses: a keystroke delivered
-# as a down/up pair inside one QMP event list can be shorter than one BdsDxe poll. Arrows survive
-# because their effect is a move a later poll re-reads; ENTER's effect is an event that is simply lost.
-#
-# ONE PRESS FOLLOWED BY A SETTLE IS THEREFORE A COIN FLIP, and the loop below is the honest shape: press,
-# look at whether the menu is still there, and press again while it is. Eight rounds is what the manual
-# run needed four of.
+# The old walk clicked a ROW first and pressed Return second. On a menu whose first row is already
+# highlighted that click is unnecessary, and it was also the step the gate skipped.
 step "take the row the highlight is on"
   optional true
   repeat
     do
-      item "press Return"
+      item "press Return, which is what the menu says takes the row"
         input ret
         settle 3
-      item "read the screen"
+      item "read the screen, to see whether the menu is still there"
         read
           name afterret
     until
@@ -208,48 +184,12 @@ step "take the row the highlight is on"
       rect [700, 360, 1220, 720]
       rect_at [1920, 1080]
       scale 1
-      # SATISFIED WHEN THE MENU IS GONE, AND THE FIRST VERSION OF THIS SAID THE OPPOSITE.
-      #
-      # MEASURED on windows10-install 45402761587: `until` reported `__until__ = true (read "select
-      # boot device")` after ONE attempt, and the menu was still on screen for the rest of the leg.
-      # The two keys were written as
-      #
-      #	words   [[select, boot, device]]
-      #	without [select, boot, device]
-      #
-      # IN `mode: text` THESE ARE NOT A PAIR OF CONDITIONS - `words` is the positive test and
-      # `without` is NOT read on this path, so the loop was satisfied BY the menu being there, which
-      # is the state it exists to leave. One press, "satisfied after 1 attempt(s)", menu unchanged.
-      #
-      # `must: false` IS ALSO NOT THE ANSWER, and the source says why: `repeat` forces `must: true`
-      # on every `until` (internal/run/repeat2.go), because a `check:` that binds a false answer and
-      # returns nil makes every loop true on its first attempt. The override would have discarded it.
-      #
-      # THE NEGATIVE FORM OF A `mode: text` QUESTION IS `without:` ALONE - no `words:` beside it. The
-      # loop then continues while the title is drawn and stops when it is not.
+      # SATISFIED WHEN THE MENU IS GONE. `without` ALONE, because `judgeWords` reads `words` first and
+      # never looks at `without` when both are present - the defect this file's own history records.
       without [select, boot, device]
     max 8
-    pause 2
 
 
-# THE STEP ASKS WHETHER THE MENU IS GONE, AND `Press any key to boot from CD or DVD` IS THAT ANSWER.
-#
-# MEASURED on run 45413523504 (ltsc, the first leg with the boot-menu loop fixed): the choice WAS taken,
-# the menu WAS gone, and this step read
-#
-#	see: 9 word(s): Press any key to boot from CD or DVD....
-#	the menu is gone ... [until]: __until__ = false
-#	    (none of "Setup Is starting" or "Windows is loading files" or "Windows Setup" or "Windows Server"
-#	     in "Press any key to boot from CD or DVD....")
-#
-# It then read `UEFI QEMU DVD-ROM` for the rest of its hundred and twenty attempts. WHAT HAD HAPPENED is
-# the whole failure: the prompt is up for about five seconds, nothing pressed a key inside that window,
-# the firmware fell back to its own menu, and the step that exists to answer the prompt ran AFTERWARDS
-# against a menu that had already returned.
-#
-# SO THE PROMPT'S OWN LINE IS ACCEPTED HERE. This step's question is "did the menu's choice take effect"
-# and a DVD asking to be booted proves it did - it is the medium talking, not the menu. The step after
-# this one presses the key the prompt is asking for, and it now gets there while the prompt is up.
 step "the menu is gone, because the choice was taken"
   optional true
   repeat
