@@ -116,18 +116,30 @@ PROFILES = {
         # ENTERPRISE LTSC (no "IoT"), which is a different SKU on a different disc, so Setup found a key
         # that named an edition the medium does not carry and stopped.
         #
-        # dockur/windows keeps the two apart for exactly this reason: `win11x64-ltsc` uses M7XTQ and
-        # `win11x64-iot` uses CGK42-GYN6Y-VD22B-BX98W-J8JXD. THIS FAMILY IS THE IoT ONE.
-        "key": "CGK42-GYN6Y-VD22B-BX98W-J8JXD",
+        # THE MEDIUM IS AN EVALUATION DISC, SO NO KEY IS SENT. MEASURED: its only image has FLAGS
+        # `IoTEnterpriseSEval`, and the retail/IoT key `CGK42-GYN6Y-VD22B-BX98W-J8JXD` still produced
+        # `0x0000A000 - 0x40031` - the edition-mismatch code - because that key names a RETAIL IoT
+        # edition and the disc carries the EVALUATION one.
+        #
+        # dockur/windows resolves this the same way: `removeEmbeddedProductKeys` strips the key from
+        # generated answer files for `-eval` images, and its own win11x64-iot template ships an EMPTY
+        # `<Key />`. An evaluation disc installs without one.
+        "key": "",
         "want": "IoT Enterprise LTSC",
         "arch": "amd64",
         "labconfig": True,
         "select": "index",
     },
     "win2025": {
-        # SERVER 2025 EVALUATION. The medium names its images rather than numbering them, which is why
-        # the selection is by NAME for this family - see scripts/wim-editions.py.
-        "key": "TVRH6-WHNXV-R9WG3-9XRFY-MY832",
+        # SERVER 2025 EVALUATION, AND THEREFORE NO PRODUCT KEY AT ALL.
+        #
+        # MEASURED: this medium carries four images whose FLAGS all end in `Eval`
+        # (ServerStandardEvalCore, ServerStandardEval, ServerDataCenterEvalCore, ServerDataCenterEval).
+        # A retail/KMS key - TVRH6-WHNXV-R9WG3-9XRFY-MY832 was the one here - names an edition the
+        # disc does not carry, and Setup answers `0x0000A000 - 0x40031` before copying anything. An
+        # evaluation disc installs without a key; a key is what the CONSUMER media needs to choose an
+        # edition out of several.
+        "key": "",
         "want": "Windows Server 2025 SERVERSTANDARD",
         "arch": "amd64",
         # Server does not require TPM or Secure Boot.
@@ -459,7 +471,16 @@ def main():
 
     profile = dict(PROFILES[args.profile])
     values = dict(IDENTITY)
-    values["__PRODUCT_KEY__"] = profile["key"]
+    # AN EMPTY KEY OMITS THE ELEMENT - see the template's note on 0x40031. `substitute` replaces the
+    # placeholder with the string, so `""` leaves a blank line where an evaluation disc wants no key.
+    if profile["key"]:
+        values["__PRODUCT_KEY_BLOCK__"] = (
+            "<ProductKey>\n"
+            "            <Key>%s</Key>\n"
+            "            <WillShowUI>Never</WillShowUI>\n"
+            "          </ProductKey>" % profile["key"])
+    else:
+        values["__PRODUCT_KEY_BLOCK__"] = ""
     values["__ARCH__"] = profile["arch"]
     # AN EMPTY REPLACEMENT DELETES THE ELEMENT, and that is the whole point: `substitute` replaces
     # the placeholder with the string, so "" leaves a blank line where a family does not need the

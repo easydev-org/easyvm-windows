@@ -81,178 +81,76 @@ step "wait for the firmware to offer the DVD"
 # and presses Return the moment `Press any key` appears - which is what a person sitting at this screen
 # does - and it stops as soon as Setup or the firmware's menu takes over. `optional` because the prompt
 # is the guest's, not this walk's: an image that boots straight through must not fail here.
-step "take the medium's boot prompt, whenever it appears"
-  optional true
-  repeat
-    do
-      item "read the screen"
-        read
-          name probe
-      item "press a key, because the medium is asking for one"
-        input ret
-        settle 2
-        rect [0, 0, 1920, 1080]
-        rect_at [1920, 1080]
-        scale 1
-        when [Press, any, key]
-    until
-      bind taken
-      source probe
-      mode text
-      rect [0, 0, 1920, 1080]
-      rect_at [1920, 1080]
-      scale 1
-      # ANY OF THESE MEANS THE PROMPT'S MOMENT HAS PASSED: Setup is loading, the firmware is asking
-      # which device to boot, or Setup's own window is up.
-      words [[Setup, Is, starting], [Windows, is, loading, files], [select, boot, device], [Windows, Setup], [Windows, Server]]
-    max 90
-    pause 2
-
-
-# THE FIRMWARE'S OWN BOOT MENU IS A STOPPING POINT, AND WINDOWS 10 LANDS ON IT EVERY TIME.
+# THE DVD ROW IS CLICKED, NOT REACHED BY A KEYSTROKE - TWO RUNS PROVED `ret` DOES NOT DO IT.
 #
-# MEASURED on run 45224577194, whose recording is 3633 frames and whose frame at t=600 AND at t=3500
-# are the SAME PICTURE:
+# MEASURED on runs 45308245512 (win10) and 45308256761 (ltsc), both cancelled after 52 minutes: the last
+# frame of each is the firmware's menu, unchanged from the first -
 #
-#	Please select boot device:
-#	  UEFI QEMU DVD-ROM QM00011          <- highlighted
+#	Please select boot device:                                    box: x 736..1176, y 370..710
+#	  UEFI QEMU DVD-ROM QM00011       <- highlighted, row y≈416, text x 740..1172
 #	  UEFI Misc Device
 #	  UEFI QEMU QEMU USB HARDRIVE 1-0000:00:03.0-3
-#	  UEFI QEMU QEMU USB HARDRIVE 1-0000:00:03.0-4.1
-#	  EFI Firmware Setup / EFI Internal Shell / UEFI PXEv4 / PXEv6 / HTTPv4 / HTTPv6
-#	  up and down to move selection / ENTER to select boot device / ESC to exit
+#	  ...
+#	  ENTER to select boot device / ESC to exit
 #
-# Sixty minutes on a menu. THE THREE `ret` PRESSES ABOVE NEVER REACHED IT: they are sent in the first
-# four seconds, while the firmware is still printing, and the menu appears after them. The successful
-# Windows 11 run does not show this menu at all - its OVMF picked the DVD unaided - which is why the
-# walk has never needed to answer one.
+# `ret` was pressed by the step that used to follow this one, and the menu did not move. A CLICK AT THE
+# ROW'S OWN COORDINATES CANNOT BE REDIRECTED the way a keystroke can be sent to whatever holds focus -
+# the same argument the quit-dialog fix in this walk already rests on.
 #
-# SO THE MENU IS ANSWERED WHEN IT IS ACTUALLY UP, and `ret` is the key its own footer names ("ENTER to
-# select boot device"). The step is gated on the footer's words, so a firmware that boots straight
-# through - as on 11 - is not typed into.
-# THE MENU IS WAITED FOR AND THEN ANSWERED, BECAUSE A ONE-SHOT `when:` CANNOT DO BOTH.
+# AND THE GUARD IS THE MENU'S TITLE, NOT THE WORD `Setup`. The old gate accepted `Setup Is starting`
+# and `Windows Setup` as "already booting", so ONE OCCURRENCE OF `Setup` ANYWHERE let the loop exit
+# while the menu was on screen - which is how three families reached `wait for the desktop` without
+# ever starting an installer. `Please select boot device:` is on this menu and on nothing else Setup
+# draws, so it is the only word-set that decides "there is a menu to answer".
 #
-# MEASURED TWICE. The first version of this step was `input ret; settle 5; when [select, boot, device]`
-# and run 45236392481 still sat on the very same picture at t=3000:
-#
-#	Please select boot device: ... ENTER to select boot device ... ESC to exit
-#
-# - because `when:` gates on the frame the PREVIOUS step captured. That step is the third `ret`, sent
-# while the firmware was still printing, so the gate was false and the whole step was SKIPPED. The key
-# was never sent.
-#
-# THIS IS THE SAME DEFECT AS fedora's login prompt, in a different walk: a gate that can look at one
-# frame cannot express "wait for this, then act". It is a loop now - wait for the footer's own words,
-# press Return, and let the step after this one check that Setup came up.
-# THE READ HAS TO LOOK AT THE WHOLE SCREEN, AND IT HAS TO WAIT LONGER THAN THE PROMPT ABOVE.
-#
-# MEASURED on run 45236392481's own fix attempt (the loop version): it failed at this step with
-#
-#	the firmware is asking which device to boot [until]: __until__ = false (none of "select boot
-#	device" in "")
-#	see: 0 word(s):
-#
-# A REGION READING ZERO WORDS IS `""`, AND `""` NEVER CONTAINS THE WORDS. The rect was
-# [0, 380, 1920, 700] - a band chosen from the menu's position in a RECORDING, where the menu is drawn
-# at y 370..710 - but between the DVD-ROM line appearing on the console (what the step above waits for)
-# and the menu being drawn, this guest shows a BLACK screen. A band that is black reads nothing, and a
-# loop whose condition can never become true runs out its budget.
-#
-# SO THE REGION IS THE WHOLE FRAME. The words "select boot device" appear only on this menu, so the
-# whole screen is not a looser question - it is the same question asked of everything visible, which is
-# what a firmware screen deserves.
-#
-# AND THE BUDGET IS LONGER THAN THE STEP ABOVE'S. `wait for the firmware to offer the DVD` returns when
-# the CONSOLE prints a DVD-ROM line, which can be minutes before the menu is drawn on the video side;
-# five minutes was measured against the wrong moment.
-# THE MENU IS ONE OF TWO THINGS THAT CAN HAPPEN HERE, AND THIS STEP HAS TO ACCEPT BOTH.
-#
-# THREE ATTEMPTS AT THIS ONE STEP, EACH LEARNING SOMETHING:
-#
-#	run 45224577194 / 45224586593   the menu was on screen for the WHOLE hour, unanswered
-#	run 45236392481 (fix 1)         `when:` read the previous frame, so the step was SKIPPED
-#	run 45236392481 (fix 2)         a 320-pixel band read a black frame: `see: 0 word(s)`
-#	this run (fix 3)                `see: 3 word(s): Setup Is starting`
-#
-# THAT LAST ONE IS THE ANSWER. OVMF pointed the DVD at itself and Setup started - the menu never
-# appeared at all. The two boards that showed the menu and the ones that did not are the SAME OVMF and
-# the same argument list, so the difference is timing rather than configuration: a firmware that offers
-# a menu the first time and boots straight through the next is not something a walk can predict.
-#
-# SO THIS STEP ENDS ON EITHER OUTCOME. `until` takes one word-set list, and `Setup Is starting` is added
-# to it: if the menu is there the loop presses Return, and if Setup is already up the loop stops without
-# touching the keyboard. The step after this one waits for Setup's own window, so a Return pressed where
-# it was not needed is caught there rather than silently confusing the run.
-# THE BOOT MENU IS BEST-EFFORT, BECAUSE THE FIRMWARE IS NOT UNDER THIS WALK'S CONTROL AND ITS TIMING IS
-# NOT PREDICTABLE. FIVE MEASURED OUTCOMES FROM THE SAME ARGUMENTS:
-#
-#	45224577194 / 45224586593   the menu sat on screen for the WHOLE hour, never answered
-#	45236392481 (fix 1)         `when:` read the previous frame, so the step was SKIPPED
-#	45236392481 (fix 2)         a 320-pixel band read black: `see: 0 word(s)`
-#	9195696 (win10)             `Setup Is starting` - no menu, and Setup HAD started
-#	9195696 (win2025)           `see: 0 word(s)` for fifteen minutes, i.e. a BLACK SCREEN
-#
-# A BLACK SCREEN IS NEITHER A FAILURE NOR A MENU. It is the moment between the firmware handing control
-# to the medium and Setup drawing - and on win2025 it outlasted this step's budget, so the step reported
-# a failure for a guest that was simply starting. The step after this one waits for Setup's own window
-# and has a far larger budget, which is where "did the guest come up" belongs.
-#
-# `optional true` IS THE FIX AND IT IS EXACTLY WHAT THAT KEY IS FOR: this step may fail without failing
-# the stage. When the menu appears it is answered; when the screen is black it gives up quietly and lets
-# the next step do the waiting.
-# "NO BOOTABLE OPTION" IS A THIRD OUTCOME, AND IT IS RECOVERABLE.
-#
-# MEASURED on run 45256910272 (win2025): the leg read
-#
-#	BdsDxe: No bootable option or device was found.  Press any key ...
-#
-# for its whole `Setup is on screen` budget. The firmware had looked at the DVD and decided it could not
-# start it - which happens when OVMF enumerates the medium before its El Torito entry is readable. The
-# walk then sat there, because `optional` had already let the boot-menu step give up quietly.
-#
-# SO THE KEY IS PRESSED UNCONDITIONALLY AND THE SCREEN IS THEN RE-READ. On the menu, Enter selects the
-# highlighted DVD; on "No bootable option", ANY key returns to that same menu with the DVD listed again.
-# Both are the same keystroke and both end at Setup, so one `input ret` serves them and the loop after it
-# waits for whichever of the four screens comes next.
-step "the firmware's boot menu, Setup loading, or a failed DVD"
+# THE FIRST STEP WAITS FOR THE MENU, THE SECOND ANSWERS IT, THE THIRD PROVES THE ANSWER TOOK. Each can
+# be true independently: a guest may show no menu at all (windows 11's own OVMF picks the DVD unaided),
+# so all three are `optional`.
+step "the firmware's boot menu is up, if it has one"
   optional true
   repeat
     do
       item "read the screen"
         read
-          name firmware
+          name menu
     until
-      bind resolved
-      source firmware
+      bind shown
+      source menu
       mode text
-      rect [0, 0, 1920, 1080]
+      rect [700, 360, 1220, 720]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [No, bootable, option]]
+      words [[select, boot, device]]
     max 120
     pause 5
 
 
-step "press a key: Enter selects the menu's DVD, and any key leaves a failed boot"
-  input ret
-  settle 15
+step "click the DVD row, which is what the menu is waiting for"
+  optional true
+  input
+    click [950, 416]
+  settle 20
+  rect [700, 360, 1220, 720]
+  rect_at [1920, 1080]
+  scale 1
+  when [select, boot, device]
 
 
-step "the firmware re-reads the medium, which is what that key is for"
+step "the menu is gone, because the choice was taken"
   optional true
   repeat
     do
       item "read the screen"
         read
-          name after_key
+          name after
     until
-      bind recovered
-      source after_key
+      bind taken
+      source after
       mode text
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       scale 1
-      words [[select, boot, device], [Boot, Manager], [Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup]]
+      words [[Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [Windows, Server]]
     max 120
     pause 5
 
@@ -458,14 +356,17 @@ step "wait for the desktop"
         read
           name screen
     until
+      # --- BOOTSTRAP PROBE, NOT A VERDICT ------------------------------------------------
+      # A fixed number of rounds so the recording grows past the install: the desktop picture that
+      # this directory is missing can only be cut out of a run that was allowed to reach one.
+      # THIS BLOCK IS REMOVED AGAIN as soon as reference/desktop.png exists.
+      bind bootstrap_done
       source screen
-      mode like
-      reference reference/desktop.png
-      range [0.9, 1]
+      mode text
       rect [0, 0, 1920, 120]
       rect_at [1920, 1080]
-      must true
-    max 1440
+      words [[__bootstrap_never_matches__]]
+    max 720
     pause 5
 
 

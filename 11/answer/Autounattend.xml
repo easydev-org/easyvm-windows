@@ -138,15 +138,24 @@ __IMAGE_SELECTOR__
            I removed this once, on the reasoning that an ISO without an answer file
            installs without a key. That is true of an interactive install and false of
            an unattended one: the pass is incomplete without it, so setup falls back to
-           asking. -->
+           asking.
+
+           UNLESS THE MEDIUM IS AN EVALUATION BUILD, IN WHICH CASE THE ELEMENT IS OMITTED. MEASURED:
+           the Server 2025 evaluation medium carries only ServerStandardEval / ServerDataCenterEval,
+           and ANY retail or KMS key in this file makes Setup answer
+
+	Windows Server Setup
+	Windows installation encountered an unexpected error. Error code: 0x0000A000 - 0x40031
+
+           0x40031 is the edition mismatch. dockur/windows does the same thing for the same reason
+           (`removeEmbeddedProductKeys`), and the IoT LTSC medium hit the identical error until its
+           key was changed for the IoT one. An evaluation disc installs without a key; a key is what
+           the CONSUMER media needs to pick an edition out of several. -->
       <UserData>
         <AcceptEula>true</AcceptEula>
         <FullName>easydiskbake</FullName>
         <Organization>easydev-org</Organization>
-        <ProductKey>
-          <Key>__PRODUCT_KEY__</Key>
-          <WillShowUI>Never</WillShowUI>
-        </ProductKey>
+        __PRODUCT_KEY_BLOCK__
       </UserData>
 
       <!-- THE RunSynchronous BYPASS BLOCK IS PRESENT OR ABSENT AS A WHOLE.
