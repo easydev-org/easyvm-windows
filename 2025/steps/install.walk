@@ -174,15 +174,45 @@ step "put the highlight on the DVD row"
   when [select, boot, device]
 
 
-# ... AND RETURN TAKES IT. Separate from the click because a step carries one `input:`, and because
-# the two halves answer different questions: the click says which row, the key says "this one".
+# ... AND RETURN TAKES IT, REPEATEDLY, BECAUSE ONE PRESS IS NOT ALWAYS SAMPLED.
+#
+# MEASURED BY HAND ON THE POD, 2026-11-24, on this exact menu with the DVD row highlighted:
+#
+#	one `ret`           the menu did not move
+#	`kp_enter`          the menu did not move
+#	arrow down / up     the highlight moved - the keyboard WAS connected
+#	six `ret`s, 1s apart  the firmware took it, TianoCore loaded, Setup started
+#
+# So the input path is sound and the DOWN/UP edge is what this console misses: a keystroke delivered
+# as a down/up pair inside one QMP event list can be shorter than one BdsDxe poll. Arrows survive
+# because their effect is a move a later poll re-reads; ENTER's effect is an event that is simply lost.
+#
+# ONE PRESS FOLLOWED BY A SETTLE IS THEREFORE A COIN FLIP, and the loop below is the honest shape: press,
+# look at whether the menu is still there, and press again while it is. Eight rounds is what the manual
+# run needed four of.
 step "take the row the highlight is on"
-  input ret
-  settle 20
-  rect [700, 360, 1220, 720]
-  rect_at [1920, 1080]
-  scale 1
-  when [select, boot, device]
+  optional true
+  repeat
+    do
+      item "press Return"
+        input ret
+        settle 3
+      item "read the screen"
+        read
+          name afterret
+    until
+      bind gone
+      source afterret
+      mode text
+      rect [700, 360, 1220, 720]
+      rect_at [1920, 1080]
+      scale 1
+      # SATISFIED WHEN THE MENU IS NO LONGER THERE - which is the only thing that proves the
+      # keystroke landed. `without` is the negative form this walk uses elsewhere.
+      words [[select, boot, device]]
+      without [select, boot, device]
+    max 8
+    pause 2
 
 
 step "the menu is gone, because the choice was taken"

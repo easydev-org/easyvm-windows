@@ -136,6 +136,10 @@ PROFILES = {
         "arch": "amd64",
         "labconfig": True,
         "select": "index",
+        # ONE IMAGE ON THE DISC, SO SETUP IS ASKED FOR NOTHING. See `install_from_block`: the
+        # `<InstallFrom>` block is what produced `0x40031` here, and removing it is what let the
+        # install run to 83% by hand.
+        "single_image": True,
         # WINDOWS 11 IOT LTSC IS A WINDOWS 11 KERNEL (build 26100), so `w11` is its own tree and the
         # one that belongs on the CD. `w10` is the fallback for a virtio-win ISO old enough to have no
         # `w11` directory at all.
@@ -160,6 +164,10 @@ PROFILES = {
         # build, and a number copied from another release is how a server installs the wrong
         # edition. `/IMAGE/NAME` is compared for equality, which is what a name is for.
         "select": "name",
+        # FOUR IMAGES, ALL `Eval`, AND NO KEY IS SENT. The selector is kept here because there IS a
+        # choice to make - but see `install_from_block` for the LTSC medium, where the same
+        # evaluation-disc reasoning made the selector itself the failure. If this profile still
+        # answers 0x40031, this flag is the first thing to try.
         # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
         # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
         # server tree is `2k22`). `2k22` is the fallback for a virtio-win old enough to predate `w11`.
@@ -399,16 +407,40 @@ def extract_drivers(virtio_iso, stage, versions=DRIVER_VERSIONS):
                 source = find_tree(winpe, member_dir)
             if source is None:
                 continue
+            # ONE TREE, FLAT, AND NOTHING ELSE UNDER THE DRIVER'S NAME.
+            #
+            # MEASURED ON A LOCAL ltsc INSTALL, 2026-11-24. The CD built for `win11iot-ltsc` carried,
+            # beside the flattened files it meant to ship:
+            #
+            #	$WinPEDriver$/viostor/2k12/amd64/viostor.sys
+            #	$WinPEDriver$/viostor/2k12R2/amd64/viostor.sys
+            #	$WinPEDriver$/viostor/2k16/amd64/...        (and every other release)
+            #
+            # and Setup answered
+            #
+            #	Windows installation encountered an unexpected error. Error code: 0x0000A000 - 0x40031
+            #
+            # windowsPE LOADS EVERY .inf IT FINDS under $WinPEDriver$. A directory holding the same
+            # driver for a dozen Windows releases is a dozen candidates for one device, and the one
+            # that wins can be a tree built for a different kernel - which is what 0x40031 reports.
+            #
+            # THE OLD LINE REMOVED ONLY THE VERSION JUST USED - which had already been moved away, so
+            # it removed nothing and left every other tree in place.
+            #
+            # SO THE DRIVER DIRECTORY IS CLEARED AND REBUILT FROM THE ONE CHOSEN TREE: files at
+            # `$WinPEDriver$/<driver>/<files>`, and no release directory anywhere beneath it.
             target = os.path.join(winpe, driver)
+            # THE CHOSEN TREE IS MOVED TO A SCRATCH NAME FIRST, because it lives INSIDE the directory
+            # about to be cleared: `source` is `<target>/<version>/amd64`, so deleting `target` would
+            # delete the files this loop is about to move.
+            staged = os.path.join(winpe, "_staged_" + driver)
+            shutil.rmtree(staged, ignore_errors=True)
+            shutil.copytree(source, staged)
+            shutil.rmtree(target, ignore_errors=True)
             os.makedirs(target, exist_ok=True)
-            for entry in os.listdir(source):
-                os.replace(os.path.join(source, entry), os.path.join(target, entry))
-            # EVERY VERSION DIRECTORY OF THIS DRIVER GOES, not only the one just used: an earlier
-            # attempt may have left another, and a stray tree of 8.3 names is a file Setup may pick.
-            shutil.rmtree(os.path.join(winpe, driver, version), ignore_errors=True)
-            # THE VERSION IS PART OF THE ANSWER, NOT A DETAIL. `fiostor` from `w11` and the same
-            # driver from `w10` are different binaries, and a log line that says only "viostor" is
-            # the reason a `boot-critical drivers` failure took three runs to localise.
+            for entry in sorted(os.listdir(staged)):
+                os.replace(os.path.join(staged, entry), os.path.join(target, entry))
+            shutil.rmtree(staged, ignore_errors=True)
             found.append(f"{driver}({version})")
             break
 
@@ -431,6 +463,28 @@ def extract_drivers(virtio_iso, stage, versions=DRIVER_VERSIONS):
                "\n".join("    %-24s %s" % (w, "present" if w in present else "ABSENT") for w in want),
                len(wrote),
                "\n".join("    " + w for w in wrote[:12]) or "    (nothing)"))
+    # EVERYTHING ELSE UNDER `$WinPEDriver$` GOES, and this is the other half of the `0x40031` fix.
+    #
+    # The `7z x` fallback above extracts the WHOLE virtio-win ISO when the patterned form produces
+    # nothing, which lays down every driver the medium carries - `fwcfg`, `pvpanic`, `vioserial`,
+    # `qxl`, and a release directory under each. windowsPE loads every `.inf` it finds there, so the
+    # CD was offering Windows a dozen drivers this walk never asked for.
+    #
+    # MEASURED: the first CD built this way listed `$WinPEDriver$/fwcfg/w11`,
+    # `$WinPEDriver$/pvpanic/2k25` and a release tree under each of the four drivers that WERE
+    # wanted. Setup answered 0x40031 before writing a byte to the disk - the same failure as the
+    # release directories inside a wanted driver, from the sibling direction.
+    #
+    # THE FOUR NAMES IN `DRIVERS` ARE THE CONTRACT: windowsPE needs exactly the disk, the scsi
+    # controller, the network card and the balloon driver. Anything else is a device this repository
+    # does not attach, and a file Setup may pick instead of the one that matches the guest.
+    for entry in sorted(os.listdir(winpe)):
+        if entry not in DRIVERS:
+            victim = os.path.join(winpe, entry)
+            if os.path.isdir(victim):
+                shutil.rmtree(victim, ignore_errors=True)
+            else:
+                os.remove(victim)
     return found
 
 
@@ -483,6 +537,31 @@ def build(template, virtio_iso, out, label, values, versions=DRIVER_VERSIONS):
         shutil.rmtree(stage, ignore_errors=True)
 
 
+def install_from_block(metadata, profile):
+    """The `<InstallFrom>` block, or NOTHING for a medium that carries one image.
+
+    MEASURED BY HAND ON THE POD, 2026-11-24, and it is the answer to a failure this repository has
+    carried for weeks. The IoT LTSC evaluation medium carries exactly one image and no product key is
+    sent; with `<InstallFrom>/IMAGE/INDEX 1</InstallFrom>` Setup answered
+
+        Windows installation encountered an unexpected error. Error code: 0x0000A000 - 0x40031
+
+    before writing a byte to the disk, and every explanation under `0x40031` - a wrong key, a wrong
+    index, a stray driver - was wrong. Removing the WHOLE `<InstallFrom>` block, and nothing else,
+    produced an install that ran: 28%, 83%, and the disk grew past 9 GiB.
+
+    `0x40031` is the code Setup uses when the edition it is ASKED FOR cannot be matched against the
+    medium. On a single-image evaluation disc the request itself is the problem: there is nothing to
+    select, and asking for `INDEX 1` makes Setup validate a selection where it would otherwise use the
+    only image it has.
+
+    SO A PROFILE THAT SAYS `"single_image": True` GETS NO SELECTOR AT ALL. Consumer media keep theirs -
+    Windows 11 Pro is one of eleven images and something has to choose it.
+    """
+    if profile.get("single_image"):
+        return ""
+    return ("          <InstallFrom>\n" + metadata + "\n          </InstallFrom>")
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--template", required=True, help="the Autounattend.xml to render")
@@ -528,11 +607,12 @@ def main():
         # AN INDEX IS A SELECTOR, NOT AN EDITION NAME. Setup matches the number against the medium's
         # own list, so a wrong number installs a different edition or fails - which is why the caller
         # is expected to have got it from wim-editions.py rather than from this repository.
-        values["__IMAGE_SELECTOR__"] = (
+        values["__IMAGE_SELECTOR__"] = install_from_block(
             "            <MetaData wcm:action=\"add\">\n"
             "              <Key>/IMAGE/INDEX</Key>\n"
             "              <Value>%d</Value>\n"
-            "            </MetaData>" % args.index)
+            "            </MetaData>" % args.index,
+            profile)
         selection = "index %d" % args.index
     else:
         want = args.want.strip()
@@ -541,11 +621,12 @@ def main():
         # XML-ESCAPED, because an image name can contain `&` (Windows 11 "IoT Enterprise LTSC" does
         # not, but a localized name may) and an unescaped one is a file Setup cannot parse.
         escaped = (want.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
-        values["__IMAGE_SELECTOR__"] = (
+        values["__IMAGE_SELECTOR__"] = install_from_block(
             "            <MetaData wcm:action=\"add\">\n"
             "              <Key>/IMAGE/NAME</Key>\n"
             "              <Value>%s</Value>\n"
-            "            </MetaData>" % escaped)
+            "            </MetaData>" % escaped,
+            profile)
         selection = "name %r" % want
 
     print("  profile %s: %s, %s" % (args.profile, profile["key"], selection))

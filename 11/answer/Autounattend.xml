@@ -111,9 +111,7 @@
 
       <ImageInstall>
         <OSImage>
-          <InstallFrom>
 __IMAGE_SELECTOR__
-          </InstallFrom>
           <InstallTo>
             <DiskID>0</DiskID>
             <PartitionID>3</PartitionID>
