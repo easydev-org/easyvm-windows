@@ -391,8 +391,25 @@ step "the installed system reaches a desktop"
     pause 5
 
 
+# THE DESKTOP GUEST IS STOPPED WITH `stop kill`, NOT WITH `acpi power`, AND THE FRAME SAYS WHY.
+#
+# MEASURED on windows11-install 45394544069 on v0.0.4: `acpi power` was pressed and the guest did
+# NOTHING - its desktop stayed on screen, clock advancing, for the whole 300-second wait:
+#
+#	t=1200   the desktop, 12:58 PM
+#	t=1520   the desktop, 1:04 PM        <- six minutes later, unchanged, and the step timed out
+#
+# A WINDOWS 11 DESKTOP TREATS THE ACPI POWER BUTTON AS "SLEEP" BY DEFAULT. The machine is therefore
+# still running, `wait_until: stopped` cannot be satisfied, and the leg dies on a step whose job is to
+# put the disk away. The same guest earlier in this same walk is stopped by `shutdown: kill` and the
+# log shows `killing the guest` then `stopped on SIGTERM` - the mechanism that WORKS here.
+#
+# `stop kill` IS NOT A CRASH. `killAndReap` sends SIGTERM first, which is qemu's documented "exit
+# now": it closes the block layer and flushes every cached write to the qcow2, so the published disk
+# is as complete as an orderly shutdown would leave it. The SIGKILL underneath is the fallback for a
+# qemu that ignores the first signal, not the normal path.
 step "shut the installed system down"
-  acpi power
+  stop kill
   timeout 300
 
 
