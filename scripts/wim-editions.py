@@ -129,9 +129,20 @@ def list_members(iso):
         # `-slt` IS PREFERRED BECAUSE IT PRINTS `Path = ...` one per member, with no column layout to
         # parse; a build without it still has the plain table, so the fallback reads that.
         out = subprocess.run(["7z", "l", "-ba", iso], capture_output=True, text=True)
-        if out.returncode != 0:
-            raise SystemExit("%s: 7z could not list this medium: %s"
-                             % (iso, (out.stderr or out.stdout).strip()[:300]))
+    # A NON-ZERO EXIT IS NOT "THE MEDIUM IS UNREADABLE", AND TREATING IT AS ONE REFUSED A GOOD DISC.
+    #
+    # MEASURED on the Windows Server 2025 evaluation medium, 2026-11-24: `7z l` listed all 1075
+    # files - `sources/install.wim` among them - and still exited 1, because ONE small member could
+    # not be read. The script refused with `7z could not list this medium`, and the whole answer CD
+    # failed for a medium whose image table was right there in the output.
+    #
+    # So the ANSWER IS THE OUTPUT, not the status: if the listing names the image file, the table can
+    # be read and the exit code is about some other member. A listing with no `install.wim`/`esd` at
+    # all is still a refusal - the check below says so by name.
+    if out.returncode != 0 and "install.wim" not in out.stdout.lower() \
+            and "install.esd" not in out.stdout.lower():
+        raise SystemExit("%s: 7z could not list this medium: %s"
+                         % (iso, (out.stderr or out.stdout).strip()[:300]))
     paths = set()
     for line in out.stdout.splitlines():
         line = line.strip()
