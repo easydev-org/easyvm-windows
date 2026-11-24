@@ -22,6 +22,21 @@ on:
       disks_repository:
         description: "the ghcr repository that holds the disks and media"
         default: "easydev-org/easyvm-windows"
+      # THE ENGINE THIS LEG RUNS INSIDE, OVERRIDABLE SO A FIX CAN BE DRIVEN BY A REAL GUEST
+      # BEFORE IT IS PUBLISHED AS A RELEASE TAG - the same input easyvm-linux's fedora workflow
+      # carries, for the same reason. The default does not change: `v0.0.4` is the release every
+      # workflow in this repository pins.
+      #
+      # IT MATTERS MORE HERE THAN ANYWHERE ELSE. The engine defect fixed in easyvm 96ff5f2 was that
+      # a `when:` on an ACTION step was never read - the dispatcher reached `input` before `when`.
+      # These walks lean on that shape harder than any others: `answer a quit dialog` is an `input
+      # esc` gated on `when [sure]`, and its whole job is to NOT press a key on a screen that is not
+      # asking. MEASURED on windows10-install 45413503395 on v0.0.4: 791 rounds of
+      # `clicked (1035, 620)` and `0.0000 similar`, with ZERO `applies:` or `skipped:` lines in the
+      # log - the gate never ran once.
+      image_tag:
+        description: "the engine image tag (a release tag, `latest`, or a build sha)"
+        default: "v0.0.4"
 
 concurrency:
   group: windows11iot-ltsc-install
@@ -38,7 +53,7 @@ jobs:
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
-      image_tag: v0.0.4
+      image_tag: ${{ inputs.image_tag }}
       disk_gb: "25"
       group: windows11iot-ltsc-install
       disks_repository: ${{ inputs.disks_repository }}
