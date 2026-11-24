@@ -167,13 +167,32 @@ step "the firmware's boot menu is up, if it has one"
 #
 # The old walk clicked a ROW first and pressed Return second. On a menu whose first row is already
 # highlighted that click is unnecessary, and it was also the step the gate skipped.
+# THE RETURN HAS TO LAND INSIDE A WINDOW THAT IS ABOUT THREE SECONDS WIDE, SO THE LOOP IS FAST.
+#
+# MEASURED on the two legs that ran the same walk against different media on 2026-11-24:
+#
+#	ltsc 45464854774  SUCCESS   `key ret` -> `see: 0 word(s):`        -> Setup took over
+#	windows10 45464833575  FAIL  `key ret` -> `see: 1 word(s): ge-liano` -> back at the boot menu
+#
+# - and windows10's own console.log shows why, on ONE line:
+#
+#	Press any key to boot from CD or DVD......BdsDxe: failed to start ... Time out
+#
+# The prompt and its timeout are adjacent: the medium offers about three seconds, and a round of this
+# loop (press, `settle 3`, whole-frame OCR) was five to six. So the key sometimes arrived after the
+# window had closed, and the firmware fell through to its own menu - which is exactly the `ge-liano`
+# fragment the leg then read for the rest of the hour.
+#
+# THE FIX IS FREQUENCY, NOT A LONGER WAIT: press every two seconds and check the menu is still there
+# between presses. A Return during Setup's own loading is ignored, and on the menu the row already
+# highlighted is the DVD, so an extra press costs nothing.
 step "take the row the highlight is on"
   optional true
   repeat
     do
       item "press Return, which is what the menu says takes the row"
         input ret
-        settle 3
+        settle 2
       item "read the screen, to see whether the menu is still there"
         read
           name afterret
@@ -187,7 +206,7 @@ step "take the row the highlight is on"
       # SATISFIED WHEN THE MENU IS GONE. `without` ALONE, because `judgeWords` reads `words` first and
       # never looks at `without` when both are present - the defect this file's own history records.
       without [select, boot, device]
-    max 8
+    max 12
 
 
 step "the menu is gone, because the choice was taken"
