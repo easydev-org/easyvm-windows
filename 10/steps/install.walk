@@ -481,17 +481,23 @@ step "wait for the desktop"
         read
           name screen
     until
-      # --- BOOTSTRAP PROBE, NOT A VERDICT ------------------------------------------------
-      # A fixed number of rounds so the recording grows past the install: the desktop picture that
-      # this directory is missing can only be cut out of a run that was allowed to reach one.
-      # THIS BLOCK IS REMOVED AGAIN as soon as reference/desktop.png exists.
-      bind bootstrap_done
+      # THE REFERENCE PICTURE IS THIS FAMILY'S OWN, cut from the first Windows 10 install that
+      # reached a desktop on 2026-11-24. It is the same predicate windows 11 uses, for the reason
+      # that file records: three brightness thresholds sat on the OOBE frame for two hours, while a
+      # comparison against a reference separates "not a desktop" from "a desktop" by two orders of
+      # magnitude.
+      #
+      # 2081 DISTINCT COLOURS IN THE TOP 120 ROWS, measured on the picture itself - fewer than
+      # windows 11's 3058 because this wallpaper is a smooth gradient, and still two orders of
+      # magnitude above a firmware menu's few dozen.
       source screen
-      mode text
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
       rect [0, 0, 1920, 120]
       rect_at [1920, 1080]
-      words [[__bootstrap_never_matches__]]
-    max 720
+      must true
+    max 1440
     pause 5
 
 

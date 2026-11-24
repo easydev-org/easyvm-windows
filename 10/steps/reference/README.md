@@ -1,13 +1,17 @@
 # The reference pictures this directory's `ssh.walk` compares against
 
-`desktop.png` IS NOT HERE YET, and that is a real gap rather than an oversight. Every Windows family
-draws a different wallpaper and taskbar, so the picture cannot be borrowed from another directory - a
-comparison against the wrong one either fails on a correct desktop or has to be loosened until it
-cannot fail.
+`desktop.png` IS HERE, from the first Windows 10 install of THIS family that reached a desktop:
+2026-11-24, the frame showing the Windows 10 wallpaper, its LEFT-ALIGNED taskbar and the `Type here
+to search` box.
 
-**It comes from the first install of THIS family that reaches a desktop**, which is what the install
-stage's own recording is for: run `windows-install.yml`, take the frame where the desktop is up, and
-commit it here as `desktop.png`.
+That left-aligned taskbar is the visible difference from the other three families, and it is why this
+picture cannot be borrowed from `11/`, `ltsc/` or `2025/` - a comparison against another family's
+desktop either fails on a correct desktop or has to be loosened until it cannot fail.
 
-`ssh.walk` is the stage AFTER `install`, so nothing is blocked by the picture being absent - the stage
-says so at its first step instead of spending 180 rounds reading `0.0000 similar`.
+WHAT MAKES IT A DESKTOP RATHER THAN A MENU OR A PROGRESS PAGE, measured: 2081 distinct colours in its
+top 120 rows. windows 11's reference carries 3058 there and ltsc's 3134 - this wallpaper is a smooth
+gradient, so it is lower - while a firmware menu has a few dozen and the OOBE frame is one line of
+white text on black.
+
+`install.walk` uses it as the verdict for `wait for the desktop`, and `ssh.walk` for its own first
+step. Both crop the top 120 rows.
