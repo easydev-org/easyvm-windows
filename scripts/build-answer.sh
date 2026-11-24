@@ -35,6 +35,38 @@ here=$(dirname "$0")
 [ -f "$windows_iso" ] || { echo "no Windows medium at $windows_iso" >&2; exit 1; }
 [ -f "$virtio_iso" ] || { echo "no virtio-win ISO at $virtio_iso" >&2; exit 1; }
 
+# A SINGLE-IMAGE MEDIUM IS NOT ASKED FOR A TABLE, AND THAT IS THE POINT.
+#
+# `wimlib-imagex` cannot read the Server 2025 evaluation medium's `install.wim` at all - measured
+# 2026-11-24, "Unable to parse the WIM file's XML document" - and it is the DISC's tool that fails, not
+# the disc: the ISO is exactly the declared size and `7z`'s own extraction is 857 bytes short of the
+# size the archive reports. A family flagged `single_image` needs no table, no index and no name, so
+# this path must not demand one.
+single=$(python3 - "$here" "$family" <<'PYEOF'
+import sys
+sys.path.insert(0, sys.argv[1])
+import importlib.util
+spec = importlib.util.spec_from_file_location("ba", sys.argv[1] + "/build-answer.py")
+ba = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(ba)
+print("yes" if ba.PROFILES[sys.argv[2]].get("single_image") else "no")
+PYEOF
+)
+
+if [ "$single" = "yes" ]; then
+    echo "=== $family: one image on the disc, so no selector is written"
+    python3 "$here/build-answer.py" \
+        --profile "$family" \
+        --single-image \
+        --template "$(dirname "$here")/11/answer/Autounattend.xml" \
+        --virtio-iso "$virtio_iso" \
+        --out "$out" \
+        --label "ANSWER"
+    size=$(stat -c %s "$out")
+    echo "=== $out: $((size / 1024)) KiB"
+    exit 0
+fi
+
 echo "=== $family: reading the edition table out of $(basename "$windows_iso")"
 python3 "$here/wim-editions.py" "$windows_iso"
 

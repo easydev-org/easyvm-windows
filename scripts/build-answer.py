@@ -164,10 +164,19 @@ PROFILES = {
         # build, and a number copied from another release is how a server installs the wrong
         # edition. `/IMAGE/NAME` is compared for equality, which is what a name is for.
         "select": "name",
-        # FOUR IMAGES, ALL `Eval`, AND NO KEY IS SENT. The selector is kept here because there IS a
-        # choice to make - but see `install_from_block` for the LTSC medium, where the same
-        # evaluation-disc reasoning made the selector itself the failure. If this profile still
-        # answers 0x40031, this flag is the first thing to try.
+        # FOUR IMAGES, ALL `Eval`, AND NO KEY IS SENT - SO NO SELECTOR EITHER.
+        #
+        # MEASURED, 2026-11-24: `wimlib-imagex` cannot read this medium's `sources/install.wim` at
+        # all - `Unable to parse the WIM file's XML document` - and the reason is not the disc. Its
+        # ISO is 8152356864 bytes, exactly what the publisher declares, and `7z`'s extraction of the
+        # WIM is 857 BYTES SHORT of the size the archive itself reports, which is what breaks the
+        # XML offset. So a NAME cannot be resolved from this file by the tool this repository has.
+        #
+        # THAT IS ALSO WHY `single_image` IS THE RIGHT ANSWER HERE RATHER THAN A WORKAROUND: the
+        # LTSC medium proved today that an `<InstallFrom>` block is what makes Setup answer 0x40031
+        # on an evaluation disc, and this is an evaluation disc. Setup picks its default image, which
+        # on this medium is the Server Standard evaluation.
+        "single_image": True,
         # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
         # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
         # server tree is `2k22`). `2k22` is the fallback for a virtio-win old enough to predate `w11`.
@@ -574,14 +583,21 @@ def main():
     # THE EDITION SELECTOR COMES FROM THE MEDIUM, NEVER FROM THIS FILE. One of these two is required,
     # because a template with neither leaves Setup on its image-picker page inside an install nobody
     # is watching.
-    sel = ap.add_mutually_exclusive_group(required=True)
+    sel = ap.add_mutually_exclusive_group(required=False)
     sel.add_argument("--index", type=int,
                      help="the /IMAGE/INDEX to install - the number scripts/wim-editions.py "
                           "printed for this ISO")
     sel.add_argument("--want",
                      help="the /IMAGE/NAME to install - used by Server, whose medium names its "
                           "images instead of numbering them")
+    ap.add_argument("--single-image", action="store_true",
+                    help="the medium carries ONE image, so write no /IMAGE selector at all - see "
+                         "`install_from_block` for the 0x40031 this avoids on an evaluation disc")
     args = ap.parse_args()
+    if not args.single_image and args.index is None and not args.want:
+        raise SystemExit("one of --index, --want or --single-image is required: without a selector "
+                         "Setup stops on its image picker, and an evaluation disc answers 0x40031 "
+                         "when it is given one it cannot match")
 
     profile = dict(PROFILES[args.profile])
     values = dict(IDENTITY)
@@ -601,7 +617,10 @@ def main():
     # TPM bypasses - which is what "absent" has to look like in a file this one generates.
     values["__LABCONFIG__"] = LABCONFIG if profile["labconfig"] else ""
 
-    if args.index is not None:
+    if args.single_image:
+        values["__IMAGE_SELECTOR__"] = ""
+        selection = "no selector (single-image medium)"
+    elif args.index is not None:
         if args.index < 1:
             raise SystemExit("--index must be 1 or more; %d is not an image index" % args.index)
         # AN INDEX IS A SELECTOR, NOT AN EDITION NAME. Setup matches the number against the medium's
