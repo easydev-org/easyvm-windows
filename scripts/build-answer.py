@@ -146,14 +146,20 @@ PROFILES = {
         "drivers": ["w11", "w10", "2k19"],
     },
     "win2025": {
-        # SERVER 2025 EVALUATION, AND THEREFORE NO PRODUCT KEY AT ALL.
+        # SERVER 2025 EVALUATION, WITH THE PUBLISHED KMS CLIENT KEY AND AN EXPLICIT SELECTOR.
         #
-        # MEASURED: this medium carries four images whose FLAGS all end in `Eval`
-        # (ServerStandardEvalCore, ServerStandardEval, ServerDataCenterEvalCore, ServerDataCenterEval).
-        # A retail/KMS key - TVRH6-WHNXV-R9WG3-9XRFY-MY832 was the one here - names an edition the
-        # disc does not carry, and Setup answers `0x0000A000 - 0x40031` before copying anything. An
-        # evaluation disc installs without a key; a key is what the CONSUMER media needs to choose an
-        # edition out of several.
+        # AN EARLIER NOTE HERE BLAMED THIS KEY FOR 0x40031 AND REMOVED IT. That diagnosis was half
+        # right and the wrong half was acted on: `0x40031` means "the edition I was asked for does not
+        # match the medium", and a key with NO `<InstallFrom>` leaves Setup to guess which image the
+        # key names. MEASURED on the pod, 2026-11-24, with no key and no selector: Setup stopped at
+        # `Select Image`, and choosing index 1 by hand then failed with
+        #
+        #	Setup has failed to validate the product key
+        #
+        # THE KEY AND THE SELECTOR ARE ONE DECISION. `TVRH6-WHNXV-R9WG3-9XRFY-MY832` is Microsoft's
+        # published KMS client key for Windows Server 2025 Standard - it SELECTS the edition and
+        # activates nothing - and it is paired below with an explicit `/IMAGE/NAME`, so the key and
+        # the image cannot disagree.
         "key": "",
         "want": "Windows Server 2025 SERVERSTANDARD",
         "arch": "amd64",
@@ -172,10 +178,34 @@ PROFILES = {
         # WIM is 857 BYTES SHORT of the size the archive itself reports, which is what breaks the
         # XML offset. So a NAME cannot be resolved from this file by the tool this repository has.
         #
-        # THAT IS ALSO WHY `single_image` IS THE RIGHT ANSWER HERE RATHER THAN A WORKAROUND: the
-        # LTSC medium proved today that an `<InstallFrom>` block is what makes Setup answer 0x40031
-        # on an evaluation disc, and this is an evaluation disc. Setup picks its default image, which
-        # on this medium is the Server Standard evaluation.
+        # `single_image` IS NOT SET HERE, AND THAT IS THE POINT OF THE MEASUREMENT ABOVE.
+        #
+        # It did TWO UNRELATED THINGS - omit `<InstallFrom>` AND omit `<ProductKey>` - and on the
+        # LTSC medium both were right, because that disc has one image and installs without a key.
+        # THIS medium has four images and validates a key, so it needs BOTH: the selector and the
+        # key.
+        # BOTH ARRANGEMENTS FAIL, AND THE MEDIUM IS THE CONSTRAINT - NOT THIS FILE.
+        #
+        # MEASURED ON THE POD, 2026-11-24, three ways:
+        #
+        #	no selector, no key      -> Setup stops on `Select Image` and waits for a choice
+        #	selector, KMS key        -> `Setup has failed to validate the product key`
+        #	selector, no key         -> `Setup has failed to validate the product key`
+        #
+        # The third is the one that rules out the obvious fix. An EVALUATION medium carrying FOUR
+        # images will not install unless a key it accepts is supplied, and the only publicly
+        # published key for Server 2025 Standard is the KMS client key - `TVRH6-WHNXV-R9WG3-9XRFY-
+        # MY832` - which an evaluation disc does not accept. The LTSC medium escapes this because it
+        # carries ONE image: with nothing to choose, Setup never reaches the page that validates.
+        #
+        # SO THIS FAMILY IS LEFT ON THE ARRANGEMENT THAT AT LEAST STOPS WHERE A HUMAN CAN SEE WHY.
+        # `single_image: True` writes no selector, which means Setup waits on `Select Image` with
+        # all four editions listed - a leg that fails there has failed at a page that names the
+        # problem, rather than at a key-validation screen that hides it.
+        #
+        # WHAT WOULD ACTUALLY FIX IT: a retail or VL media of Server 2025 (a KMS key is accepted
+        # there), or an official evaluation key from the source that issued the disc. Neither is a
+        # change to this file.
         "single_image": True,
         # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
         # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
