@@ -406,7 +406,10 @@ def extract_drivers(virtio_iso, stage, versions=DRIVER_VERSIONS):
             # EVERY VERSION DIRECTORY OF THIS DRIVER GOES, not only the one just used: an earlier
             # attempt may have left another, and a stray tree of 8.3 names is a file Setup may pick.
             shutil.rmtree(os.path.join(winpe, driver, version), ignore_errors=True)
-            found.append(driver)
+            # THE VERSION IS PART OF THE ANSWER, NOT A DETAIL. `fiostor` from `w11` and the same
+            # driver from `w10` are different binaries, and a log line that says only "viostor" is
+            # the reason a `boot-critical drivers` failure took three runs to localise.
+            found.append(f"{driver}({version})")
             break
 
     if not found:
