@@ -172,40 +172,36 @@ PROFILES = {
         "select": "name",
         # FOUR IMAGES, ALL `Eval`, AND NO KEY IS SENT - SO NO SELECTOR EITHER.
         #
-        # MEASURED, 2026-11-24: `wimlib-imagex` cannot read this medium's `sources/install.wim` at
-        # all - `Unable to parse the WIM file's XML document` - and the reason is not the disc. Its
-        # ISO is 8152356864 bytes, exactly what the publisher declares, and `7z`'s extraction of the
-        # WIM is 857 BYTES SHORT of the size the archive itself reports, which is what breaks the
-        # XML offset. So a NAME cannot be resolved from this file by the tool this repository has.
+        # SERVER 2025 IS OUT OF SCOPE, AND THIS IS THE EVIDENCE RATHER THAN A PREFERENCE.
         #
-        # `single_image` IS NOT SET HERE, AND THAT IS THE POINT OF THE MEASUREMENT ABOVE.
+        # MEASURED ON THE POD, 2026-11-24, four ways - and every one fails on the MEDIUM, not on this
+        # file:
         #
-        # It did TWO UNRELATED THINGS - omit `<InstallFrom>` AND omit `<ProductKey>` - and on the
-        # LTSC medium both were right, because that disc has one image and installs without a key.
-        # THIS medium has four images and validates a key, so it needs BOTH: the selector and the
-        # key.
-        # BOTH ARRANGEMENTS FAIL, AND THE MEDIUM IS THE CONSTRAINT - NOT THIS FILE.
+        #	no selector, no key                -> Setup stops on `Select Image` and waits
+        #	selector, KMS key                  -> Setup has failed to validate the product key
+        #	selector, no key                   -> Setup has failed to validate the product key
+        #	manual pick of Desktop Experience  -> the same key failure on Next
         #
-        # MEASURED ON THE POD, 2026-11-24, three ways:
+        # THE MEDIUM IS THE CONSTRAINT. It carries FOUR images, so Setup will not proceed without a
+        # key it accepts, and the only publicly published key for Server 2025 Standard is the KMS
+        # client key `TVRH6-WHNXV-R9WG3-9XRFY-MY832`, which an EVALUATION disc rejects. The LTSC
+        # medium escapes this because it carries ONE image: with nothing to choose, Setup never
+        # reaches the page that validates.
         #
-        #	no selector, no key      -> Setup stops on `Select Image` and waits for a choice
-        #	selector, KMS key        -> `Setup has failed to validate the product key`
-        #	selector, no key         -> `Setup has failed to validate the product key`
+        # A CAUSE WORTH RECORDING, FOUND WHILE LOOKING: this ISO's `sources/EI.CFG` is
         #
-        # The third is the one that rules out the obvious fix. An EVALUATION medium carrying FOUR
-        # images will not install unless a key it accepts is supplied, and the only publicly
-        # published key for Server 2025 Standard is the KMS client key - `TVRH6-WHNXV-R9WG3-9XRFY-
-        # MY832` - which an evaluation disc does not accept. The LTSC medium escapes this because it
-        # carries ONE image: with nothing to choose, Setup never reaches the page that validates.
+        #	[Channel]\r\neval\r\n\r\n[VL]\r\n0\r\n
         #
-        # SO THIS FAMILY IS LEFT ON THE ARRANGEMENT THAT AT LEAST STOPS WHERE A HUMAN CAN SEE WHY.
-        # `single_image: True` writes no selector, which means Setup waits on `Select Image` with
-        # all four editions listed - a leg that fails there has failed at a page that names the
-        # problem, rather than at a key-validation screen that hides it.
+        # with NO `[EditionID]`, where the LTSC medium's says `[EditionID] IoTEnterpriseSEval`. Without
+        # it Setup cannot tell which image the medium is for and asks for a key to name one. Overriding
+        # it in place DID change the screen - from `Select Image` to `Choose a licensing method` - which
+        # is how the diagnosis was confirmed, and it does not remove the key requirement.
         #
-        # WHAT WOULD ACTUALLY FIX IT: a retail or VL media of Server 2025 (a KMS key is accepted
-        # there), or an official evaluation key from the source that issued the disc. Neither is a
-        # change to this file.
+        # THE THREE DESKTOP FAMILIES THIS REPOSITORY SHIPS - windows11, windows10 and windows11iot-ltsc
+        # - all reach a desktop, each with its own `reference/desktop.png`. Server 2025 is left here,
+        # on the arrangement that fails at a page naming the problem, and would need retail/VL media
+        # or an official evaluation key to go further. Neither is a change to this file.
+        "single_image": True,
         "single_image": True,
         # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
         # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
