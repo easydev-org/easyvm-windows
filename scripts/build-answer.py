@@ -86,6 +86,8 @@ PROFILES = {
         "arch": "amd64",
         "labconfig": True,
         "select": "index",
+        # `w11` IS THIS GUEST'S OWN TREE - the one tree that has always worked here.
+        "drivers": ["w11", "w10", "2k19"],
     },
     "win10": {
         # Windows 10 22H2's consumer medium carries Pro at index 6 as well, and the same generic key
@@ -97,6 +99,11 @@ PROFILES = {
         # registry writes for checks that never run.
         "labconfig": False,
         "select": "index",
+        # `w10` FIRST, AND THIS IS THE FIX FOR `boot-critical drivers`. MEASURED on run 45329047801:
+        # Setup started and refused `viostor/w11/amd64`, which is compiled against the Windows 11
+        # kernel; its .inf excludes Windows 10's build 19045, so windowsPE will not load it and will
+        # not install without it. Windows 10's own tree is what the guest can load.
+        "drivers": ["w10", "w11", "2k19"],
     },
     "win11iot-ltsc": {
         # THE **IoT** LTSC KEY, WHICH IS NOT THE LTSC KEY, AND THE DIFFERENCE COST A RUN.
@@ -129,6 +136,10 @@ PROFILES = {
         "arch": "amd64",
         "labconfig": True,
         "select": "index",
+        # WINDOWS 11 IOT LTSC IS A WINDOWS 11 KERNEL (build 26100), so `w11` is its own tree and the
+        # one that belongs on the CD. `w10` is the fallback for a virtio-win ISO old enough to have no
+        # `w11` directory at all.
+        "drivers": ["w11", "w10", "2k19"],
     },
     "win2025": {
         # SERVER 2025 EVALUATION, AND THEREFORE NO PRODUCT KEY AT ALL.
@@ -149,6 +160,10 @@ PROFILES = {
         # build, and a number copied from another release is how a server installs the wrong
         # edition. `/IMAGE/NAME` is compared for equality, which is what a name is for.
         "select": "name",
+        # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
+        # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
+        # server tree is `2k22`). `2k22` is the fallback for a virtio-win old enough to predate `w11`.
+        "drivers": ["w11", "2k22", "2k19"],
     },
 }
 
@@ -225,9 +240,26 @@ def list_members(medium):
 WINPE_DIR = "$WinPEDriver$"
 
 # drivers windowsPE must load before it can install anything, and the release trees they live under.
-# `w11` first because that is the guest; `w10` and `2k19` are the fallback for an older virtio-win.
 DRIVERS = ["viostor", "vioscsi", "NetKVM", "Balloon"]
-DRIVER_VERSIONS = ["w11", "w10", "2k19"]
+
+# THE RELEASE TREE IS A FACT ABOUT THE GUEST, NOT A UNIVERSAL PREFERENCE, AND THIS LIST USED TO BE ONE
+# ORDER FOR EVERY FAMILY: `w11` first, always. That is why windows11 installed and the other three did
+# not.
+#
+# MEASURED on run 45329047801 (windows10, frame t=1490). Setup started, then drew
+#
+#	Windows Setup
+#	Windows Setup could not install one or more boot-critical drivers.
+#	To install Windows, make sure that the drivers are valid, and restart the installation.
+#
+# and the machine rebooted back into the firmware menu. `viostor/w11/amd64` is compiled against the
+# Windows 11 kernel (NT 10.0 build 22000+); its .inf carries a decoration that excludes Windows 10's
+# build 19045, so windowsPE refuses it as a boot-critical driver and refuses to install without one.
+# The disk is therefore invisible to Setup, which is the same outcome the driver tree exists to prevent.
+#
+# SO THE ORDER IS PER FAMILY - see PROFILES[...]["drivers"]. The list below is only the set of trees
+# this script knows how to look for.
+DRIVER_VERSIONS = ["w11", "w10", "2k25", "2k22", "2k19"]
 
 
 def run(argv):
@@ -303,7 +335,7 @@ def find_tree(root, member_dir):
     return None
 
 
-def extract_drivers(virtio_iso, stage):
+def extract_drivers(virtio_iso, stage, versions=DRIVER_VERSIONS):
     """Lay the four driver trees out flat, as `$WinPEDriver$/<driver>/<files>`.
 
     SEVEN-ZIP RATHER THAN A HAND-WRITTEN Joliet READER: the ISO carries a Joliet tree, and extracting
@@ -339,7 +371,7 @@ def extract_drivers(virtio_iso, stage):
 
     found = []
     for driver in DRIVERS:
-        for version in DRIVER_VERSIONS:
+        for version in versions:
             # THE VERSION DIRECTORIES ARE MATCHED AS DIRECTORIES, NOT AS A FILE PREFIX.
             #
             # MEASURED ON RUN 45219352187: this function still extracted nothing on a runner after
@@ -381,7 +413,7 @@ def extract_drivers(virtio_iso, stage):
         # THE DIAGNOSIS IS IN THE MESSAGE, BECAUSE THIS FAILURE HAS THREE POSSIBLE CAUSES AND THEY ARE
         # INDISTINGUISHABLE FROM THE SENTENCE ABOVE. It was "the medium is not readable" twice and
         # "the extraction wrote nothing" once, and each needed a different fix.
-        want = [f"{d}/{v}/amd64" for d in DRIVERS for v in DRIVER_VERSIONS]
+        want = [f"{d}/{v}/amd64" for d in DRIVERS for v in versions]
         present = [w for w in want if any(m.lower() == w.lower() for m in members)]
         wrote = sorted(members_written(winpe))
         raise SystemExit(
@@ -399,7 +431,7 @@ def extract_drivers(virtio_iso, stage):
     return found
 
 
-def build(template, virtio_iso, out, label, values):
+def build(template, virtio_iso, out, label, values, versions=DRIVER_VERSIONS):
     if not os.path.isfile(template):
         raise SystemExit(f"no answer file at {template}")
     if not shutil.which("xorriso"):
@@ -418,7 +450,7 @@ def build(template, virtio_iso, out, label, values):
         with open(os.path.join(stage, "Autounattend.xml"), "w", encoding="utf-8") as f:
             f.write(text)
 
-        found = extract_drivers(virtio_iso, stage)
+        found = extract_drivers(virtio_iso, stage, versions)
         print(f"  drivers on the answer CD: {', '.join(found)}")
 
         os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
@@ -514,7 +546,8 @@ def main():
         selection = "name %r" % want
 
     print("  profile %s: %s, %s" % (args.profile, profile["key"], selection))
-    build(args.template, args.virtio_iso, args.out, args.label, values)
+    build(args.template, args.virtio_iso, args.out, args.label, values,
+          profile.get("drivers", DRIVER_VERSIONS))
 
 
 if __name__ == "__main__":
