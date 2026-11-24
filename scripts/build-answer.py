@@ -535,13 +535,26 @@ def install_from_block(metadata, profile):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--template", required=True, help="the Autounattend.xml to render")
-    ap.add_argument("--virtio-iso", required=True, help="the virtio-win ISO the drivers come from")
-    ap.add_argument("--out", required=True, help="the ISO to write")
+    ap.add_argument("--template", required=False, help="the Autounattend.xml to render")
+    ap.add_argument("--virtio-iso", required=False, help="the virtio-win ISO the drivers come from")
+    ap.add_argument("--out", required=False, help="the ISO to write")
     ap.add_argument("--label", default="ANSWER", help="the ISO's volume name")
     ap.add_argument("--profile", required=True, choices=sorted(PROFILES),
                     help="which Windows family this answer CD is for: the product key, the "
                          "architecture and whether the TPM bypasses belong in it")
+    # ASK ONE QUESTION AND EXIT, SO A CALLER CAN CHECK THE SELECTOR DECISION WITHOUT BUILDING.
+    #
+    # `artifacts-publish.yml` unpacks the ISO it just wrote and reads `/IMAGE/INDEX` back out of the
+    # answer file, so that a selector which does not resolve fails at build time rather than at
+    # Setup's picker. A SINGLE-IMAGE MEDIUM HAS NO SELECTOR BY DESIGN - `install_from_block` returns
+    # nothing for it, because `/IMAGE/INDEX 1` on a one-image evaluation disc is what produces
+    # `0x0000A000 - 0x40031` - so the read-back has to be able to ask "was no selector correct here",
+    # and the only place that answer lives is this profile.
+    #
+    # EXIT 0 MEANS "THIS MEDIUM IS SUPPOSED TO HAVE NO SELECTOR", 1 MEANS "IT IS NOT".
+    ap.add_argument("--explain-selector", action="store_true",
+                    help="print whether this profile's medium is single-image and exit 0 if so, "
+                         "without building anything")
     # THE EDITION SELECTOR COMES FROM THE MEDIUM, NEVER FROM THIS FILE. One of these two is required,
     # because a template with neither leaves Setup on its image-picker page inside an install nobody
     # is watching.
@@ -556,6 +569,14 @@ def main():
                     help="the medium carries ONE image, so write no /IMAGE selector at all - see "
                          "`install_from_block` for the 0x40031 this avoids on an evaluation disc")
     args = ap.parse_args()
+    if args.explain_selector:
+        single = bool(PROFILES[args.profile].get("single_image"))
+        print("%s: single_image=%s" % (args.profile, single))
+        raise SystemExit(0 if single else 1)
+    for required in ("template", "virtio_iso", "out"):
+        if getattr(args, required) is None:
+            raise SystemExit("--%s is required unless --explain-selector is given"
+                             % required.replace("_", "-"))
     if not args.single_image and args.index is None and not args.want:
         raise SystemExit("one of --index, --want or --single-image is required: without a selector "
                          "Setup stops on its image picker, and an evaluation disc answers 0x40031 "

@@ -494,10 +494,32 @@ jobs:
 
           kind=$(grep -oE '/IMAGE/(INDEX|NAME)' "$xml" | head -1 | sed 's|/IMAGE/||')
           value=$(grep -A2 '<Key>/IMAGE/' "$xml" | grep -oE '<Value>[^<]*' | head -1 | sed 's/<Value>//')
-          [ -n "$kind" ] && [ -n "$value" ] || {
-            echo "::error::the answer file selects no image at all, so Setup stops on its picker"
-            exit 1
-          }
+          if [ -z "$kind" ] || [ -z "$value" ]; then
+            # A SINGLE-IMAGE MEDIUM IS ASKED FOR NOTHING, AND THAT IS THE CORRECT ANSWER FOR IT.
+            #
+            # MEASURED BY HAND ON THE POD, 2026-11-24: the IoT LTSC evaluation disc carries exactly
+            # one image, and with `<InstallFrom>/IMAGE/INDEX 1</InstallFrom>` Setup answered
+            #
+            #   Windows installation encountered an unexpected error. Error code: 0x0000A000 - 0x40031
+            #
+            # before writing a byte. Removing the whole block - changing nothing else - produced an
+            # install that ran past 9 GiB. 0x40031 is Setup's edition-mismatch code: asking for
+            # INDEX 1 makes it VALIDATE a selection on a disc that has nothing to select.
+            #
+            # SO A SELECTOR IS REQUIRED ONLY WHEN THE MEDIUM HAS MORE THAN ONE IMAGE. This check
+            # exists to catch a selector that does not RESOLVE, not to require one that must not
+            # exist. The build already decided the case from the profile: see install_from_block in
+            # scripts/build-answer.py, whose `single_image: True` is what suppressed the block.
+            if ! python3 "$GITHUB_WORKSPACE/scripts/build-answer.py" \
+                 --profile "${{ matrix.answer.family }}" --explain-selector; then
+              echo "::error::the answer file selects no image at all, so Setup stops on its picker"
+              exit 1
+            fi
+            echo "=== the answer file selects NO image, because this medium is single-image"
+            python3 "$GITHUB_WORKSPACE/scripts/wim-editions.py" \
+              "$GITHUB_WORKSPACE/work/windows.iso"
+            exit 0
+          fi
           echo "=== the answer file selects $kind $value"
           python3 "$GITHUB_WORKSPACE/scripts/wim-editions.py" \
             "$GITHUB_WORKSPACE/work/windows.iso"
