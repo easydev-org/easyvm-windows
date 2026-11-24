@@ -5,7 +5,7 @@
 to search` box.
 
 That left-aligned taskbar is the visible difference from the other three families, and it is why this
-picture cannot be borrowed from `11/`, `ltsc/` or `2025/` - a comparison against another family's
+picture cannot be borrowed from `11/` or `ltsc/` - a comparison against another family's
 desktop either fails on a correct desktop or has to be loosened until it cannot fail.
 
 WHAT MAKES IT A DESKTOP RATHER THAN A MENU OR A PROGRESS PAGE, measured: 2081 distinct colours in its

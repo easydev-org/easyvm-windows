@@ -5,7 +5,7 @@
 wallpaper, its centred taskbar and the evaluation watermark in the corner.
 
 Every Windows family draws a different wallpaper and taskbar, so this picture is not shared with
-`11/`, `10/` or `2025/` - a comparison against another family's desktop either fails on a correct
+`11/` or `10/` - a comparison against another family's desktop either fails on a correct
 desktop or has to be loosened until it cannot fail.
 
 WHAT MAKES IT A DESKTOP RATHER THAN A MENU OR A PROGRESS PAGE, measured: 3134 distinct colours in its

@@ -5,7 +5,7 @@ Walkthroughs and CI for **Windows** guests, driven by
 
 ## What lives here
 
-`11/`, `10/`, `ltsc/`, `2025/` - one directory per Windows family, each holding the `.walk` files for
+`11/`, `10/`, `ltsc/` - one directory per Windows family, each holding the `.walk` files for
 `install`, `ssh`, `vm-configure` and `dev`, the PowerShell scripts those stages run inside the guest,
 and the reference images they compare against.
 
@@ -28,7 +28,6 @@ own tag, so a dispatch runs exactly one install and nothing else can affect it:
 gh workflow run windows11-install.yml
 gh workflow run windows10-install.yml
 gh workflow run windows11iot-ltsc-install.yml
-gh workflow run windows2025-install.yml
 ```
 
 | file | walk | publishes |
@@ -36,22 +35,21 @@ gh workflow run windows2025-install.yml
 | `windows11-install.yml` | `11/` | `windows11` |
 | `windows10-install.yml` | `10/` | `windows10` |
 | `windows11iot-ltsc-install.yml` | `ltsc/` | `windows11iot-ltsc` |
-| `windows2025-install.yml` | `2025/` | `windows2025` |
 
 ## What makes these guests different
 
 **The edition selector comes out of the medium.** Every Windows answer file has to say WHICH image on
 the disc to install, and the index is not stable across releases: Windows 11's consumer medium has
-Professional at 6, the IoT LTSC evaluation medium has one or two images, and Server 2025 names its
-images instead of numbering them. So `artifacts-publish.yml` reads the medium's own `install.wim` with
+Professional at 6 and the IoT LTSC evaluation medium has one or two images. So
+`artifacts-publish.yml` reads the medium's own `install.wim` with
 `wimlib-imagex` while it builds the answer CD, and the CD in ghcr already carries the right selector.
 **No index is ever typed by hand.** See `docs/WINDOWS-VERSIONS.md`.
 
 **The product key is per family**, because a key SELECTS an edition: the generic Pro key picks nothing
 on an LTSC medium, so Setup stops asking for one.
 
-**The TPM bypasses are only in the families that check for TPM.** Windows 10 and Server 2025 check
-neither, so their answer files omit the block rather than writing registry values nothing reads.
+**The TPM bypasses are only in the families that check for TPM.** Windows 10 checks neither, so its
+answer file omits the block rather than writing registry values nothing reads.
 
 ## The media is mirrored, not fetched from upstream
 

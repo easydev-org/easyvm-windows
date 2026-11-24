@@ -49,8 +49,7 @@ import tempfile
 # THE EDITION SELECTOR IS *NOT* HERE, AND THAT IS THE POINT OF THIS FILE'S SECOND HALF. It used to be
 # `__WINDOWS_IMAGE_INDEX__: "6"` - a NUMBER THAT IS TRUE OF ONE MEDIUM. MEASURED across the images this
 # repository publishes: Windows 11 consumer has Professional at 6, the IoT LTSC evaluation medium has
-# one or two images and 6 is out of range, and Windows Server 2025's install media names its images
-# "Windows Server 2025 SERVERSTANDARD" rather than offering a numbered list. So the selector is read
+# one or two images and 6 is out of range. So the selector is read
 # from the ISO being installed - `scripts/wim-editions.py` - and passed in as `--index` or `--want`.
 IDENTITY = {
     "__ADMIN_USER__": "vmuser",
@@ -66,11 +65,11 @@ IDENTITY = {
 #	                   medium. The SAME key on an LTSC medium selects nothing - the edition it names
 #	                   is not on the disc - and Setup stops asking for one. dockur/windows ships a
 #	                   different key per family (CGK42-... for 11 IoT LTSC, M7XTQ-... for plain 11 LTSC,
-#	                   TVRH6-... for Server 2025) for exactly this reason.
+#	                   for exactly this reason.
 #	labconfig          The TPM/SecureBoot bypasses exist because OVMF_CODE_4M.fd has no Microsoft
 #	                   keys. Windows 10 DOES NOT CHECK for either, and writes to LabConfig that
 #	                   nothing reads - harmless, but a lie in a file that is supposed to say what
-#	                   the guest needs. Server 2025 does not check either.
+#	                   the guest needs.
 #	architecture       `processorArchitecture="amd64"` eight times. It stays a placeholder because the
 #	                   template is written once and Setup ignores a component whose architecture does
 #	                   not match the medium - but EVERY PROFILE HERE IS amd64: ARM64 is out of scope
@@ -144,69 +143,6 @@ PROFILES = {
         # one that belongs on the CD. `w10` is the fallback for a virtio-win ISO old enough to have no
         # `w11` directory at all.
         "drivers": ["w11", "w10", "2k19"],
-    },
-    "win2025": {
-        # SERVER 2025 EVALUATION, WITH THE PUBLISHED KMS CLIENT KEY AND AN EXPLICIT SELECTOR.
-        #
-        # AN EARLIER NOTE HERE BLAMED THIS KEY FOR 0x40031 AND REMOVED IT. That diagnosis was half
-        # right and the wrong half was acted on: `0x40031` means "the edition I was asked for does not
-        # match the medium", and a key with NO `<InstallFrom>` leaves Setup to guess which image the
-        # key names. MEASURED on the pod, 2026-11-24, with no key and no selector: Setup stopped at
-        # `Select Image`, and choosing index 1 by hand then failed with
-        #
-        #	Setup has failed to validate the product key
-        #
-        # THE KEY AND THE SELECTOR ARE ONE DECISION. `TVRH6-WHNXV-R9WG3-9XRFY-MY832` is Microsoft's
-        # published KMS client key for Windows Server 2025 Standard - it SELECTS the edition and
-        # activates nothing - and it is paired below with an explicit `/IMAGE/NAME`, so the key and
-        # the image cannot disagree.
-        "key": "",
-        "want": "Windows Server 2025 SERVERSTANDARD",
-        "arch": "amd64",
-        # Server does not require TPM or Secure Boot.
-        "labconfig": False,
-        # BY NAME, NOT BY INDEX. The Server medium's images are named "Windows Server 2025
-        # SERVERSTANDARD" and "…SERVERDATACENTER"; the order they appear in is a fact about the
-        # build, and a number copied from another release is how a server installs the wrong
-        # edition. `/IMAGE/NAME` is compared for equality, which is what a name is for.
-        "select": "name",
-        # FOUR IMAGES, ALL `Eval`, AND NO KEY IS SENT - SO NO SELECTOR EITHER.
-        #
-        # SERVER 2025 IS OUT OF SCOPE, AND THIS IS THE EVIDENCE RATHER THAN A PREFERENCE.
-        #
-        # MEASURED ON THE POD, 2026-11-24, four ways - and every one fails on the MEDIUM, not on this
-        # file:
-        #
-        #	no selector, no key                -> Setup stops on `Select Image` and waits
-        #	selector, KMS key                  -> Setup has failed to validate the product key
-        #	selector, no key                   -> Setup has failed to validate the product key
-        #	manual pick of Desktop Experience  -> the same key failure on Next
-        #
-        # THE MEDIUM IS THE CONSTRAINT. It carries FOUR images, so Setup will not proceed without a
-        # key it accepts, and the only publicly published key for Server 2025 Standard is the KMS
-        # client key `TVRH6-WHNXV-R9WG3-9XRFY-MY832`, which an EVALUATION disc rejects. The LTSC
-        # medium escapes this because it carries ONE image: with nothing to choose, Setup never
-        # reaches the page that validates.
-        #
-        # A CAUSE WORTH RECORDING, FOUND WHILE LOOKING: this ISO's `sources/EI.CFG` is
-        #
-        #	[Channel]\r\neval\r\n\r\n[VL]\r\n0\r\n
-        #
-        # with NO `[EditionID]`, where the LTSC medium's says `[EditionID] IoTEnterpriseSEval`. Without
-        # it Setup cannot tell which image the medium is for and asks for a key to name one. Overriding
-        # it in place DID change the screen - from `Select Image` to `Choose a licensing method` - which
-        # is how the diagnosis was confirmed, and it does not remove the key requirement.
-        #
-        # THE THREE DESKTOP FAMILIES THIS REPOSITORY SHIPS - windows11, windows10 and windows11iot-ltsc
-        # - all reach a desktop, each with its own `reference/desktop.png`. Server 2025 is left here,
-        # on the arrangement that fails at a page naming the problem, and would need retail/VL media
-        # or an official evaluation key to go further. Neither is a change to this file.
-        "single_image": True,
-        "single_image": True,
-        # SERVER 2025 IS BUILD 26100 - the SAME KERNEL GENERATION AS WINDOWS 11 - so `w11` is its
-        # tree, not `2k19` and not `2k25` (there is no `2k25` in a virtio-win release; the newest
-        # server tree is `2k22`). `2k22` is the fallback for a virtio-win old enough to predate `w11`.
-        "drivers": ["w11", "2k22", "2k19"],
     },
 }
 

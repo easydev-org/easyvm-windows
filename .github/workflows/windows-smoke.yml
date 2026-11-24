@@ -19,8 +19,8 @@ name: windows-smoke
 #
 # THE WALK IS SHARED BY EVERY X64 FAMILY, AND THAT IS CORRECT RATHER THAN LAZY: smoke.walk asks the
 # CONSOLE one question - `BdsDxe: starting` - and reads nothing from the picture, so it is the same
-# claim for 11, 10, LTSC and 2025. `from_walk:` names which family's copy to run, because a walk's
-# `work` directory is resolved beside the FILE and the four copies are identical by construction.
+# claim for 11, 10 and LTSC. `from_walk:` names which family's copy to run, because a walk's
+# `work` directory is resolved beside the FILE and the three copies are identical by construction.
 #
 # IT IS NOT MATRIXED, BY REQUEST: one dispatch, one family. `from_walk` is a choice input, so a run
 # names exactly one directory and nothing else is touched.
@@ -33,18 +33,18 @@ on:
           the PUBLISHED disk to boot
         default: "windows11"
       from_walk:
-        description: "which family's smoke walk to run; the four copies are identical"
+        description: "which family's smoke walk to run; the three copies are identical"
         type: choice
         options:
           - "11"
           - "10"
           - "ltsc"
-          - "2025"
         default: "11"
       disk_gb:
         description: >-
-          the disk the published image is written into. 25 for the clients, 40 for Server - the tag
-          and the size are one fact, so a Server disk booted with 25 GiB reports a bad volume.
+          the disk the published image is written into. 25 covers every family this repository
+          publishes; the tag and the size are one fact, so a disk booted with too little reports a
+          bad volume.
         default: "25"
       disks_repository:
         description: "the ghcr repository that holds the disk"

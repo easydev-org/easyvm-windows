@@ -3,7 +3,7 @@
 #
 #   scripts/build-answer.sh <family> <windows.iso> <virtio-win.iso> <answer.iso>
 #
-#	family        win11 | win10 | win11iot-ltsc | win2025 - a row of build-answer.py's PROFILES
+#	family        win11 | win10 | win11iot-ltsc - a row of build-answer.py's PROFILES
 #	windows.iso   the medium the guest installs FROM: the edition table is read out of it
 #	virtio-win.iso  the driver ISO whose $WinPEDriver$ tree goes on the CD
 #	answer.iso    where to write the result
@@ -15,7 +15,7 @@
 #	                              install.wim and prints the index for the image the family names,
 #	                              or refuses with the whole table. MEASURED: Windows 11 consumer has
 #	                              Professional at 6, the IoT LTSC evaluation medium has 6 out of
-#	                              range, and Server 2025 names its images rather than numbering them.
+#	                              range.
 #
 #	INDEX OR NAME                 Server's medium answers to a NAME (`/IMAGE/NAME`), and the clients
 #	                              answer to an INDEX. The choice is a fact about the family, so it
@@ -26,7 +26,7 @@
 # into an install nobody is watching.
 set -eu
 
-family=${1:?family: win11, win10, win11iot-ltsc or win2025}
+family=${1:?family: win11, win10 or win11iot-ltsc}
 windows_iso=${2:?the Windows medium: the edition table is read out of it}
 virtio_iso=${3:?the virtio-win ISO the drivers come from}
 out=${4:?where to write the answer ISO}
@@ -37,11 +37,10 @@ here=$(dirname "$0")
 
 # A SINGLE-IMAGE MEDIUM IS NOT ASKED FOR A TABLE, AND THAT IS THE POINT.
 #
-# `wimlib-imagex` cannot read the Server 2025 evaluation medium's `install.wim` at all - measured
-# 2026-11-24, "Unable to parse the WIM file's XML document" - and it is the DISC's tool that fails, not
-# the disc: the ISO is exactly the declared size and `7z`'s own extraction is 857 bytes short of the
-# size the archive reports. A family flagged `single_image` needs no table, no index and no name, so
-# this path must not demand one.
+# MEASURED 2026-11-24 on an evaluation medium whose `install.wim` `wimlib-imagex` could not open at
+# all ("Unable to parse the WIM file's XML document"), while `7z`'s own extraction of that file was
+# short of the size the archive reported. A family flagged `single_image` needs no table, no index and
+# no name, so this path must not demand one - whatever the reason the table cannot be read.
 single=$(python3 - "$here" "$family" <<'PYEOF'
 import sys
 sys.path.insert(0, sys.argv[1])

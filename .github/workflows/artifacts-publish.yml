@@ -77,7 +77,6 @@ jobs:
           # requests that page made, every time, so the URL is minted in the job that uses it.
           - { tag: "iso-win10",         group: "windows", resolve: "win10", sha: "", size: "6140975104" }
           - { tag: "iso-win11iot-ltsc", group: "windows", url: "https://go.microsoft.com/fwlink/?linkid=2270353&clcid=0x409&culture=en-us&country=us", sha: "", size: "5060020224" }
-          - { tag: "iso-win2025",       group: "windows", url: "https://go.microsoft.com/fwlink/?linkid=2345730&clcid=0x409&culture=en-us&country=us", sha: "", size: "8152356864" }
     # NO `if:` HERE, AND THAT IS NOT AN OVERSIGHT: A JOB-LEVEL `if:` CANNOT SEE `matrix`.
     #
     # GitHub evaluates a job's `if:` before the matrix is expanded, so `matrix.artifact.tag` is empty
@@ -161,7 +160,7 @@ jobs:
             exit 0
           fi
           case "$RESOLVE" in
-            win10|win11|win11iot-ltsc|win2025) ;;
+            win10|win11|win11iot-ltsc) ;;
             *) echo "::error::$RESOLVE is not a name fetch-windows-iso.py knows"; exit 1 ;;
           esac
           # THE ARCH IS x64 FOR EVERY ROW THIS REPOSITORY PUBLISHES. An ARM64 medium is a second
@@ -273,7 +272,7 @@ jobs:
   #
   #	Windows 11 consumer          index 6 is Professional
   #	Windows 11 IoT LTSC eval     6 is OUT OF RANGE - the medium carries one or two images
-  #	Windows Server 2025 eval     the medium NAMES its images instead of numbering them
+  #	(no Server medium here any more - see docs/WINDOWS-VERSIONS.md)
   #
   # so the selector is read from the medium being installed and the answer file carries the OTHER
   # kind of selector for Server. `scripts/build-answer.sh` does both, and prints the table it read.
@@ -301,7 +300,7 @@ jobs:
     # `which` WINS OVER `group`, AND THE GROUP CHECKS HAVE TO SAY SO.
     #
     # MEASURED: this condition was `|| inputs.group == 'all' || ...` and `group` DEFAULTS TO 'all', so
-    # every `-f which=iso-win2025` dispatch also ran all four answer jobs - each pulling a 5-8 GiB
+    # every `-f which=iso-win10` dispatch also ran all the answer jobs - each pulling a 5-8 GiB
     # medium it was not asked for. A default value that satisfies a guard is a guard that checks
     # nothing, which is the same shape as the selection input that downloaded seventeen artifacts.
     if: >-
@@ -317,7 +316,6 @@ jobs:
           - { family: "win11",         tag: "answer-windows11",         medium: "iso-windows11" }
           - { family: "win10",         tag: "answer-win10",             medium: "iso-win10" }
           - { family: "win11iot-ltsc", tag: "answer-win11iot-ltsc",     medium: "iso-win11iot-ltsc" }
-          - { family: "win2025",       tag: "answer-win2025",           medium: "iso-win2025" }
     steps:
       - uses: actions/checkout@v4
 
@@ -331,7 +329,7 @@ jobs:
           set -eu
           # EMPTY MEANS "EVERY ROW", ANYTHING ELSE MEANS "THE ROW WITH THIS TAG". A `which` that names
           # an ISO is not a request for an answer CD, and the test has to be an equality rather than
-          # a prefix comparison: `[ "${WHICH#answer-}" = "$WHICH" ]` is TRUE for `iso-win2025` as well
+          # a prefix comparison: `[ "${WHICH#answer-}" = "$WHICH" ]` is TRUE for `iso-win10` as well
           # as for empty, which is how all four answer jobs ran on an ISO-only dispatch.
           if [ -z "${WHICH:-}" ]; then
             echo "wanted=yes" >> "$GITHUB_OUTPUT"

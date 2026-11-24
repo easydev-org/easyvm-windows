@@ -11,8 +11,7 @@ repository now publishes:
 
     Windows 11 consumer          index 6 is Professional
     Windows 11 IoT LTSC eval     one or two images, and 6 is out of range
-    Windows Server 2025 eval     two images, and the installation media names them
-                                 "Windows Server 2025 SERVERSTANDARD" / "... SERVERDATACENTER"
+    (Server media are no longer installed here - see docs/WINDOWS-VERSIONS.md)
 
 So a second Windows release with `index 6` copied from the first is a Setup that stops on "the image
 you have selected is not available" - a sentence that names neither the index nor the ISO. The index

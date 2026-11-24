@@ -5,7 +5,6 @@
     fetch-windows-iso.py win11
     fetch-windows-iso.py win11iot-ltsc          # x64
     fetch-windows-iso.py win11iot-ltsc arm64
-    fetch-windows-iso.py win2025
 
 WHY THIS EXISTS: Windows 10 22H2 reached end of support on 2025-10-14, and the public page that used
 to hand out its ISO now gives Windows visitors a Media Creation Tool instead. THE FILE IS STILL ON
@@ -27,7 +26,6 @@ down. So each candidate is HEADed and its Content-Disposition filename is what s
 
     win11iot-ltsc x64     CLIENT_IOT_LTSC_EVAL_x64
     win11iot-ltsc arm64   CLIENT_IOT_LTSC_EVAL_A64
-    win2025 x64           SERVER_EVAL_x64FRE_en-us       (one per language; en-us is chosen)
 
 NO ARM64 WINDOWS IS INSTALLED BY THIS REPOSITORY. The `arm64` argument still RESOLVES a URL, because
 the resolver is a fact about Microsoft's pages rather than about what this build boots - and because a
@@ -73,10 +71,6 @@ EVAL_CENTER = {
         "page": "windows-11-iot-enterprise-ltsc-eval",
         "x64": "CLIENT_IOT_LTSC_EVAL_x64",
         "arm64": "CLIENT_IOT_LTSC_EVAL_A64",
-    },
-    "win2025": {
-        "page": "windows-server-2025",
-        "x64": "SERVER_EVAL_x64FRE_en-us",
     },
 }
 

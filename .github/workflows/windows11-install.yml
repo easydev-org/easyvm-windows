@@ -7,8 +7,7 @@ name: windows11-install
 # (`iso-windows11`, `iso-virtio-win`, `answer-windows11`) and publishes one (`windows11`), so it can
 # be dispatched alone, cancelled alone, and re-run alone.
 #
-# THE FOUR SIBLINGS ARE windows10-install.yml, windows11iot-ltsc-install.yml,
-# windows11iot-ltsc-arm64-install.yml and windows2025-install.yml. Each is a copy of this shape with
+# THE SIBLINGS ARE windows10-install.yml and windows11iot-ltsc-install.yml. Each is a copy of this shape with
 # its own tags, and the DIFFERENCES ARE THE POINT rather than duplication: a family's medium, its
 # answer CD (which carries a product key and an image selector) and its budget are facts about that
 # family, and a file per family is where those facts are legible.
