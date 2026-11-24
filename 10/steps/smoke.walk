@@ -19,7 +19,6 @@
 # bootindex=0 with discard=unmap, no installer medium is attached, and the variables store is the
 # fresh copy every later stage gets.
 walkthrough "the published disk starts - nothing else"
-boot_disk from_caller
 resolution 1920x1080
 recording_resolution 1920x1080
 
