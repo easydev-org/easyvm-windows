@@ -63,11 +63,11 @@ permissions:
 
 jobs:
   smoke:
-    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.3-dev
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.4
     secrets: inherit
     with:
       image_repository: easydev-org/easyvm
-      image_tag: v0.0.3-dev
+      image_tag: v0.0.4
       disk_gb: ${{ inputs.disk_gb }}
       group: windows-smoke-${{ inputs.from_tag }}
       disks_repository: ${{ inputs.disks_repository }}
