@@ -208,9 +208,25 @@ step "take the row the highlight is on"
       rect [700, 360, 1220, 720]
       rect_at [1920, 1080]
       scale 1
-      # SATISFIED WHEN THE MENU IS NO LONGER THERE - which is the only thing that proves the
-      # keystroke landed. `without` is the negative form this walk uses elsewhere.
-      words [[select, boot, device]]
+      # SATISFIED WHEN THE MENU IS GONE, AND THE FIRST VERSION OF THIS SAID THE OPPOSITE.
+      #
+      # MEASURED on windows10-install 45402761587: `until` reported `__until__ = true (read "select
+      # boot device")` after ONE attempt, and the menu was still on screen for the rest of the leg.
+      # The two keys were written as
+      #
+      #	words   [[select, boot, device]]
+      #	without [select, boot, device]
+      #
+      # IN `mode: text` THESE ARE NOT A PAIR OF CONDITIONS - `words` is the positive test and
+      # `without` is NOT read on this path, so the loop was satisfied BY the menu being there, which
+      # is the state it exists to leave. One press, "satisfied after 1 attempt(s)", menu unchanged.
+      #
+      # `must: false` IS ALSO NOT THE ANSWER, and the source says why: `repeat` forces `must: true`
+      # on every `until` (internal/run/repeat2.go), because a `check:` that binds a false answer and
+      # returns nil makes every loop true on its first attempt. The override would have discarded it.
+      #
+      # THE NEGATIVE FORM OF A `mode: text` QUESTION IS `without:` ALONE - no `words:` beside it. The
+      # loop then continues while the title is drawn and stops when it is not.
       without [select, boot, device]
     max 8
     pause 2
