@@ -124,10 +124,29 @@ step "the firmware's boot menu is up, if it has one"
     pause 5
 
 
+# THE DVD ROW'S CENTRE IS (845,435), MEASURED PIXEL BY PIXEL FROM THE RECORDING.
+#
+# TWO WRONG COORDINATES BEFORE THIS ONE, AND BOTH WERE GUESSES READ OFF A SCREENSHOT BY EYE:
+#
+#	(950,416)  the box's horizontal RULE line. Rows around it: y 416 is 213 bright pixels spanning the
+#	           whole width - that is the rule, not text. The click landed on nothing the firmware counts,
+#	           the menu lost focus, and the legs then read `BdsDxe: No bootable option or device` for
+#	           the rest of their budget.
+#	(950,398)  the TITLE. `Please select boot device:` is centred, x 848..1052 - and the reason it looks
+#	           like a row is that a centred 204-px string and a left-aligned 197-px row have the same
+#	           width. Reading only widths is how the first two mistakes were made.
+#
+# WHAT THE FRAME ACTUALLY SHOWS, by scanning every row for bright and dark pixels:
+#
+#	y 426..444   the SELECTED ROW's inverse video: dark pixels span x 744..1179, i.e. the whole row
+#	y 429..440   the text on it, x 745..942   -> `UEFI QEMU DVD-ROM QM00011`
+#	y 448..459   the next row, x 745..870     -> `UEFI Misc Device`
+#
+# SO THE CLICK IS (845,435): the centre of the highlighted row, which is also the text's own middle.
+# A selected row is a band, not a baseline - and the band is what a pointer has to land inside.
 step "click the DVD row, which is what the menu is waiting for"
-  optional true
   input
-    click [950, 416]
+    click [845, 435]
   settle 20
   rect [700, 360, 1220, 720]
   rect_at [1920, 1080]
