@@ -7,21 +7,20 @@
 | `win11` | x64 | `Win11_25H2_English_x64_v2.iso` | `11/` | `windows11-install.yml` | `windows11` |
 | `win10` | x64 | `Win10_22H2_English_x64v1.iso` | `10/` | `windows10-install.yml` | `windows10` |
 | `win11iot-ltsc` | x64 | `CLIENT_IOT_LTSC_EVAL_x64` | `ltsc/` | `windows11iot-ltsc-install.yml` | `windows11iot-ltsc` |
-| `win11iot-ltsc` | **arm64** | `CLIENT_IOT_LTSC_EVAL_A64FRE_en-us.iso` | `ltsc-arm64/` | `windows11iot-ltsc-arm64-install.yml` | — refuses |
 | `win2025` | x64 | `SERVER_EVAL_x64FRE_en-us` | `2025/` | `windows2025-install.yml` | `windows2025` |
 
 **EVERY INSTALL IS ITS OWN WORKFLOW FILE, AND NONE OF THEM HAS A MATRIX.** A dispatch runs one family;
 there is no `strategy:` anywhere in the five files and no `needs:` between them. The reason is that a
 matrix makes five unrelated installs look like one job - they share no artifact, no tag and no
 conviction - and a family that stops on a dialog it does not know should not be visible as a row that
-cancelled four others. `windows11iot-ltsc-arm64-install.yml` is the only one with a `needs:`, and it
-uses it to make its install UNSCHEDULABLE: the job it needs always fails, with the list of what the
-engine is missing.
+cancelled four others.
 
-`scripts/fetch-windows-iso.py <family> [x64|arm64]` prints the URL for each, through Microsoft's own
-pages. It downloads nothing: the caller decides whether to fetch 5-8 GiB and where to put it.
+`scripts/fetch-windows-iso.py <family>` prints the URL for each, through Microsoft's own pages. It
+downloads nothing: the caller decides whether to fetch 5-8 GiB and where to put it.
 
-`win11iot-ltsc arm64` resolves too, and **it is not installable yet** - see the last section.
+**ARM64 IS NOT SUPPORTED.** This engine drives `qemu-system-x86_64` and an x86 UEFI firmware; an ARM64
+Windows needs a different emulator, AAVMF, `-machine virt` and an ARM64 host for KVM. The medium and the
+answer-file half were prepared and then removed rather than left as a stage that could never pass.
 
 ## The edition selector is read from the medium, never copied
 
@@ -121,29 +120,3 @@ stable `go.microsoft.com/fwlink` redirects and can be written down.
 
 **No digest is pinned for these three**, because the filename behind the link changes at each refresh.
 The **length is exact** and a mismatch is a refused push.
-
-## Why there is exactly one ARM64 image, and why it cannot install yet
-
-`win11iot-ltsc arm64` is the **only** ARM64 Windows a virtual machine can install from. Everything else
-on ARM64 is one of two things that cannot boot:
-
-- a **VHDX** - a disk image, not an installation medium
-- a **Media Creation Tool** - the download connector answers `DownloadType: 2` and never `1` for
-  `win11arm64`
-
-So `win11 arm64` and `win2025 arm64` do not exist, and adding one would be a mistake rather than a
-feature. **Do not add another ARM64 row.**
-
-Running an ARM64 guest is a **second machine shape**, and this engine does not have it:
-
-| what is needed | what exists |
-|---|---|
-| `qemu-system-aarch64` | `exec.Command("qemu-system-x86_64")` in `internal/daemon/driver.go` |
-| AAVMF firmware | `Containerfile` installs `qemu-system-x86` and `ovmf`; no `qemu-efi-aarch64` |
-| `virtio-blk-device` | every walk writes `virtio-blk-pci` |
-| an arm64 host for KVM | the runners are x86-64, where this is TCG and unusably slow |
-| `processorArchitecture="arm64"` × 8 | the template takes `__ARCH__`, so this part is ready |
-
-The answer-file half is already parameterised - `scripts/build-answer.py` carries `arch` per profile and
-the template takes `__ARCH__` - but the engine half is a product change, not an ISO. **When that shape
-is built, IoT LTSC is the image it starts.**

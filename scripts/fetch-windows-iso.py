@@ -29,17 +29,17 @@ down. So each candidate is HEADed and its Content-Disposition filename is what s
     win11iot-ltsc arm64   CLIENT_IOT_LTSC_EVAL_A64
     win2025 x64           SERVER_EVAL_x64FRE_en-us       (one per language; en-us is chosen)
 
-THE ONLY ARM64 WINDOWS THIS REPOSITORY SUPPORTS IS `win11iot-ltsc arm64`, AND THAT IS A DECISION
-RATHER THAN A LIMITATION OF THE SCRIPT. Microsoft publishes exactly one ARM64 ISO that a virtual
-machine can install from - Windows 11 IoT Enterprise LTSC 2024, whose Evaluation Center page carries
-`CLIENT_IOT_LTSC_EVAL_A64`. Everything else on ARM64 is either a VHDX (a disk image, not a medium
-this build can boot) or a Media Creation Tool: the download connector answers `DownloadType: 2` and
-never `1` for `win11arm64`, which is why no ARM64 Pro or Home ISO appears here.
+NO ARM64 WINDOWS IS INSTALLED BY THIS REPOSITORY. The `arm64` argument still RESOLVES a URL, because
+the resolver is a fact about Microsoft's pages rather than about what this build boots - and because a
+URL that is one command away is cheaper to check than a paragraph claiming it does not exist.
 
-SO THERE IS NO `win11 arm64` AND NO `win2025 arm64`, AND NOTHING SHOULD ADD ONE. Running an ARM64 guest
-is a second machine shape - qemu-system-aarch64, `-machine virt`, an AAVMF firmware instead of OVMF,
-and `virtio-blk-device` instead of `virtio-blk-pci` - so a second ARM64 row would be a second
-untested shape rather than a second ISO. When that shape exists, this is the one image it starts.
+WHAT IT WOULD TAKE IS THE REASON IT IS OUT OF SCOPE. Microsoft publishes exactly one ARM64 ISO a
+virtual machine can install from - Windows 11 IoT Enterprise LTSC 2024, whose Evaluation Center page
+carries `CLIENT_IOT_LTSC_EVAL_A64`; everything else on ARM64 is a VHDX or a Media Creation Tool
+(`DownloadType: 2`, never `1`, for `win11arm64`). Installing it needs a whole second machine shape,
+which this engine does not have: `qemu-system-aarch64` instead of `qemu-system-x86_64`, AAVMF instead
+of OVMF, `-machine virt` instead of q35, `virtio-blk-device` instead of `virtio-blk-pci`, and an ARM64
+host so the guest runs on KVM rather than TCG.
 
 MICROSOFT BLOCKS THIS BY IP AND SAYS SO. The connector answers "Sentinel marked this request as
 rejected." or "We are unable to complete this request at this time." Both mean the address is on a

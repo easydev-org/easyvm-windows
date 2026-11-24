@@ -71,8 +71,10 @@ IDENTITY = {
 #	                   keys. Windows 10 DOES NOT CHECK for either, and writes to LabConfig that
 #	                   nothing reads - harmless, but a lie in a file that is supposed to say what
 #	                   the guest needs. Server 2025 does not check either.
-#	architecture       `processorArchitecture="amd64"` eight times. An ARM64 medium needs `arm64`
-#	                   in all eight, or Setup ignores every component in the file.
+#	architecture       `processorArchitecture="amd64"` eight times. It stays a placeholder because the
+#	                   template is written once and Setup ignores a component whose architecture does
+#	                   not match the medium - but EVERY PROFILE HERE IS amd64: ARM64 is out of scope
+#	                   (docs/WINDOWS-VERSIONS.md), so `arm64` would be a value nothing produces.
 #
 # SO THE TEMPLATE CARRIES PLACEHOLDERS AND THIS TABLE FILLS THEM. A fourth release is a fourth row.
 PROFILES = {

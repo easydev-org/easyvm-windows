@@ -10,12 +10,12 @@ Walkthroughs and CI for **Windows** guests, driven by
 and the reference images they compare against.
 
 `docs/WINDOWS-VERSIONS.md` - which releases are supported, how each one's edition is selected, and why
-the ARM64 medium cannot install yet.
+ARM64 is out of scope.
 
 `scripts/` - the three things that are not a walkthrough:
 
 ```sh
-scripts/fetch-windows-iso.py <family> [x64|arm64]   # print the URL, through Microsoft's own pages
+scripts/fetch-windows-iso.py <family>               # print the URL, through Microsoft's own pages
 scripts/wim-editions.py <iso>                       # the edition table out of a medium
 scripts/build-answer.py --profile <family> ...
 scripts/build-answer.sh <family> <iso> <virtio.iso> <out.iso>   # the two joined
@@ -29,7 +29,6 @@ gh workflow run windows11-install.yml
 gh workflow run windows10-install.yml
 gh workflow run windows11iot-ltsc-install.yml
 gh workflow run windows2025-install.yml
-gh workflow run windows11iot-ltsc-arm64-install.yml   # refuses: the engine has no ARM64 shape yet
 ```
 
 | file | walk | publishes |
@@ -38,7 +37,6 @@ gh workflow run windows11iot-ltsc-arm64-install.yml   # refuses: the engine has 
 | `windows10-install.yml` | `10/` | `windows10` |
 | `windows11iot-ltsc-install.yml` | `ltsc/` | `windows11iot-ltsc` |
 | `windows2025-install.yml` | `2025/` | `windows2025` |
-| `windows11iot-ltsc-arm64-install.yml` | `ltsc-arm64/` | (refuses, with a list of what is missing) |
 
 ## What makes these guests different
 
