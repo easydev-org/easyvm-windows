@@ -173,6 +173,51 @@ step "the menu is gone, because the choice was taken"
     pause 5
 
 
+# THE MEDIUM ASKS FOR A KEY IN A FIVE-SECOND WINDOW, AND THIS WALK HAD NO STEP THAT PRESSES ONE.
+#
+# MEASURED on run 45323176485 (ltsc), whose frame at t=180 is the whole story:
+#
+#	BdsDxe: No bootable option or device was found.
+#	BdsDxe: Press any key to enter the Boot Manager Menu.
+#	        Press any key to boot from CD or DVD......
+#
+# THE DVD WAS OFFERED AND THE PROMPT WAS UP. Nobody pressed a key inside its window, so the firmware
+# moved on and found nothing bootable. An earlier version of this walk had three blind `ret` presses for
+# this prompt, sent in the first four seconds after the console printed `DVD-ROM` - before the prompt
+# was on the video side - and they were removed when the boot-menu handling was rewritten. Removing them
+# removed the only thing that answered this line.
+#
+# SO THE PROMPT IS WAITED FOR AND ANSWERED WHEN IT IS UP, which is what a person at this screen does:
+# read every two seconds, press Return the moment `Press any key` is on screen, and stop as soon as
+# Setup's own words appear. `optional` because the prompt belongs to the guest - an image that boots
+# straight through must not fail here.
+step "take the medium's boot prompt, whenever it appears"
+  optional true
+  repeat
+    do
+      item "read the screen"
+        read
+          name probe
+      item "press a key, because the medium is asking for one"
+        input ret
+        settle 2
+        rect [0, 0, 1920, 1080]
+        rect_at [1920, 1080]
+        scale 1
+        when [Press, any, key]
+    until
+      bind taken
+      source probe
+      mode text
+      rect [0, 0, 1920, 1080]
+      rect_at [1920, 1080]
+      scale 1
+      # ANY OF THESE MEANS THE PROMPT'S MOMENT HAS PASSED.
+      words [[Setup, Is, starting], [Windows, is, loading, files], [Windows, Setup], [Windows, Server]]
+    max 90
+    pause 2
+
+
 step "Setup is on screen"
   repeat
     do
