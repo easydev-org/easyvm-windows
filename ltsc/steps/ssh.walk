@@ -148,7 +148,12 @@ step "the machine has an sshd service now"
       bind up
       source sshdstate
       mode text
-      rect [0, 0, 1920, 200]
+      # THE WHOLE SCREEN, BECAUSE THE ANSWER IS IN THE MIDDLE OF IT. `rect [0, 0, 1920, 200]` is the
+      # top strip, where the menu bar and nothing else lives; the PowerShell window's last line is
+      # around y=450..970. MEASURED on run 45666342842: `SSHD_PRESENT=True` was printed and read
+      # THIRTEEN TIMES while this gate answered "the condition never held" - the service was there,
+      # the check was looking at the wallpaper above it.
+      rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       words [[SSHD_PRESENT=True]]
     max 12
