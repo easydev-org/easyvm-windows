@@ -93,26 +93,23 @@ step "run the screen setting"
   settle 3
 
 
-# `Add-WindowsCapability` FIRST, BECAUSE IoT LTSC DOES NOT SHIP winget AND THIS IS THE PATH THAT
-# DOES NOT NEED IT.
+# BOTH INSTALLERS, WINGET FIRST - AND ON THIS EDITION IT WILL NOT BE THERE.
 #
-# MEASURED on run 45652133455, the first time this family ever ran an ssh stage: the desktop came up
-# (`1.0000 similar`), the pane steps ran, and then every one of the sixty `machine_ssh` probes
-# answered false. The recording's last frame says why:
+# MEASURED on run 45652133455, which is why this stage stopped using winget alone. Its recording:
 #
-#	PS C:\Users\vmuser> Start-Service sshd; (Get-Service sshd).Status
-#	Start-Service : Cannot find any service with service name 'sshd'.
-#	Get-Service  : Cannot find any service with service name 'sshd'.
-#	WARNING: TCP connect to (127.0.0.1 : 22) failed
+#	PS C:\Users\vmuser> winget install --id Microsoft.OpenSSH.Preview ...
+#	winget : The term 'winget' is not recognized as the name of a cmdlet, function, script file,
+#	or operable program.
+#	    + CategoryInfo : ObjectNotFound: (winget:String) [], CommandNotFoundException
+#	WINGET_EXIT=0
+#	WINGET_LOW=0
 #
-# THE PACKAGE NEVER INSTALLED. The command was the 11 walk's `winget install --id
-# Microsoft.OpenSSH.Preview`, and on this edition winget either is absent or refused - its output had
-# scrolled past by the time the frame above was taken, and the step that ran it never looked.
+# `WINGET_EXIT=0` ON A COMMAND THAT NEVER RAN IS THE PART THAT MATTERS: `$LASTEXITCODE` kept its
+# previous value, so the step that only looked at it blessed a machine with no sshd.
 #
-# `OpenSSH.Server` IS A WINDOWS CAPABILITY, present in every Windows 10 and 11 image including IoT
-# LTSC, and `Add-WindowsCapability` installs it from the image itself rather than a package feed. It
-# also PROVES ITSELF: the command prints an Online/RestartNeeded pair, and the step after it asks the
-# service whether it exists.
+# THE CONDITION IS EVALUATED IN THE GUEST, NOT IN THIS FILE, because a walk cannot branch on what a
+# command prints. `Add-WindowsCapability` comes from the image rather than a feed, which is what
+# makes it the right fallback here, and the step after this asks `Get-Service sshd` for the verdict.
 step "prove which package manager this edition ships"
   settle 2
   input text "(Get-Command winget -ErrorAction SilentlyContinue).Source; 'WINGET_PRESENT=' + [bool](Get-Command winget -ErrorAction SilentlyContinue)"
@@ -124,10 +121,10 @@ step "run that check"
   settle 8
 
 
-step "install openssh"
+step "install openssh, with whichever installer this edition has"
   settle 2
-  input text "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Select-Object -ExpandProperty RestartNeeded"
-  type_gap 0.3
+  input text "if (Get-Command winget -ErrorAction SilentlyContinue) { winget install --id Microsoft.OpenSSH.Preview --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity } else { Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Select-Object -ExpandProperty RestartNeeded }; 'SSHD_PRESENT=' + [bool](Get-Service sshd -ErrorAction SilentlyContinue)"
+  type_gap 0.2
 
 
 step "run the install"
@@ -135,10 +132,26 @@ step "run the install"
   settle 180
 
 
-step "prove the server capability reports present"
-  run "Get-WindowsCapability -Online -Name OpenSSH.Server* | Select-Object -ExpandProperty State"
-  settle 6
-  type_gap 0.15
+# THE SERVICE IS THE VERDICT, NOT EITHER INSTALLER'S EXIT CODE.
+step "the machine has an sshd service now"
+  repeat
+    do
+      item "ask the service whether it exists"
+        input text "clear; 'SSHD_PRESENT=' + [bool](Get-Service sshd -ErrorAction SilentlyContinue)"
+      item
+        input ret
+        settle 10
+      item "read the screen"
+        read
+          name sshdstate
+    until
+      bind up
+      source sshdstate
+      mode text
+      rect [0, 0, 1920, 200]
+      rect_at [1920, 1080]
+      words [[SSHD_PRESENT=True]]
+    max 12
 
 
 step "sshd starts automatically"
