@@ -128,6 +128,30 @@ step "run that check"
   settle 8
 
 
+# THE CAPABILITY'S SOURCE IS ASKED BEFORE IT IS INSTALLED, BECAUSE WINDOWS 10 AND LTSC DIFFER HERE.
+#
+# `Add-WindowsCapability` IS THE SAME COMMAND IN BOTH FILES AND IT WORKED ON IoT LTSC - its disk now
+# has sshd listening on 22 and `whoami` over ssh answers `sandbox\vmuser`. THIS FAMILY RAN THE
+# IDENTICAL COMMAND (both logs say `typed 107 character(s)`) AND STILL HAD NO SERVICE:
+#
+#	Start-Service : Cannot find any service with service name 'sshd'.
+#	WARNING: TCP connect to (127.0.0.1 : 22) failed
+#
+# A CAPABILITY HAS TO COME FROM SOMEWHERE. Windows 10's consumer media can source it from Windows
+# Update, and this guest has no route off the host - so the install can return without installing and
+# nothing says so unless the STATE is read. `Get-WindowsCapability` answers one of NotPresent /
+# InstallPending / Installed, and that word is printed here before anything is attempted.
+step "what state does this image report for OpenSSH.Server"
+  settle 2
+  input text "Get-WindowsCapability -Online -Name OpenSSH.Server* | ForEach-Object { $_.Name + ' = ' + $_.State }"
+  type_gap 0.3
+
+
+step "run the state check"
+  input ret
+  settle 10
+
+
 step "install openssh"
   settle 2
   input text "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Select-Object -ExpandProperty RestartNeeded"
