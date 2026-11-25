@@ -36,6 +36,41 @@ gh workflow run windows11iot-ltsc-install.yml
 | `windows10-install.yml` | `10/` | `windows10` |
 | `windows11iot-ltsc-install.yml` | `ltsc/` | `windows11iot-ltsc` |
 
+## Every stage that boots a disk starts the SAME machine the installer did
+
+**`-cpu` AND `-smp` ARE NOT OPTIONAL IN A WALK THAT BOOTS A WINDOWS DISK.** A walk with neither gets
+qemu's defaults - `qemu64`, one core - and Windows 11 24H2 will not run on them. It does not say so;
+it finds its own boot manager, decides the installation is damaged, and enters
+`Preparing Automatic Repair`, which reads exactly like a broken disk.
+
+MEASURED, one published `windows11` disk, two stages:
+
+| stage | cpu / cores | the desktop check read |
+|---|---|---|
+| `install.walk`, "reboot into the installed system" | `Skylake-Client-v4` / 4 | `0.9949 similar` - desktop |
+| `ssh.walk`, "boot the disk" (before this fix) | qemu64 / 1 | **179 readings, all `0.0000`**, `Preparing Automatic Repair` at t=400s |
+| `ssh.walk`, same disk, after this fix | `Skylake-Client-v4` / 4 | reached step 12 of 29 in under fifteen minutes |
+
+Asking this image's own qemu what `qemu64` actually contains:
+
+```
+sse4.1 = False   sse4.2 = False   popcnt = False
+avx    = False   avx2   = False   bmi1   = False   bmi2 = False
+```
+
+Windows 11 requires SSE4.2 and POPCNT, and at least two cores. The firmware's own console log shows
+the consequence: `BdsDxe: loading Boot0002 "UEFI Misc Device"`, the FALLBACK entry, never
+`Windows Boot Manager`.
+
+So every walk that boots a published Windows disk carries the installer's own line:
+
+```yaml
+args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash", ...]]
+```
+
+`install`, `smoke`, `ssh`, `vm-configure` and `dev` all declare it. **A new stage copies it from
+`install.walk` or it will appear to fail on a disk that is fine.**
+
 ## What makes these guests different
 
 **The edition selector comes out of the medium.** Every Windows answer file has to say WHICH image on
