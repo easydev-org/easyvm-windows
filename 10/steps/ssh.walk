@@ -62,8 +62,30 @@ step "wait for the desktop"
       rect [0, 0, 1280, 120]
       rect_at [1920, 1080]
       must true
+    # A BOOT THAT STOPS AT THE FIRMWARE SPLASH IS NOT A WALK FAILURE, AND IT HAPPENS. MEASURED on run
+    # 45665239012: the SAME `windows10` disk that reached a desktop in 200 seconds on the run before
+    # spent its whole budget on
+    #
+    #	BdsDxe: starting Boot0002 "UEFI Misc Device"
+    #	TianoCore ... (spinning)
+    #
+    # with `-cpu Skylake-Client-v4 -smp 4` in the qemu line - so it is not the processor this time,
+    # which is what it was for `windows11`. The guest simply did not take control, and a reset clears
+    # that.
+    #
+    # SO TEN MINUTES IN, THE GUEST IS RESET ONCE. `nudge` fires at most once, so a disk that genuinely
+    # cannot boot still fails at the ceiling instead of looping forever.
     max 180
     pause 5
+    nudge 600
+      item "wake the firmware, in case it stopped at the splash"
+        input ret
+        settle 3
+      item "reset the guest"
+        acpi reset
+        timeout 300
+      item "give it time to come back"
+        settle 60
 
 
 step "wake the screen"
