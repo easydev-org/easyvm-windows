@@ -93,15 +93,52 @@ step "run the screen setting"
   settle 3
 
 
+# `Add-WindowsCapability` FIRST, BECAUSE IoT LTSC DOES NOT SHIP winget AND THIS IS THE PATH THAT
+# DOES NOT NEED IT.
+#
+# MEASURED on run 45652133455, the first time this family ever ran an ssh stage: the desktop came up
+# (`1.0000 similar`), the pane steps ran, and then every one of the sixty `machine_ssh` probes
+# answered false. The recording's last frame says why:
+#
+#	PS C:\Users\vmuser> Start-Service sshd; (Get-Service sshd).Status
+#	Start-Service : Cannot find any service with service name 'sshd'.
+#	Get-Service  : Cannot find any service with service name 'sshd'.
+#	WARNING: TCP connect to (127.0.0.1 : 22) failed
+#
+# THE PACKAGE NEVER INSTALLED. The command was the 11 walk's `winget install --id
+# Microsoft.OpenSSH.Preview`, and on this edition winget either is absent or refused - its output had
+# scrolled past by the time the frame above was taken, and the step that ran it never looked.
+#
+# `OpenSSH.Server` IS A WINDOWS CAPABILITY, present in every Windows 10 and 11 image including IoT
+# LTSC, and `Add-WindowsCapability` installs it from the image itself rather than a package feed. It
+# also PROVES ITSELF: the command prints an Online/RestartNeeded pair, and the step after it asks the
+# service whether it exists.
+step "prove which package manager this edition ships"
+  settle 2
+  input text "(Get-Command winget -ErrorAction SilentlyContinue).Source; 'WINGET_PRESENT=' + [bool](Get-Command winget -ErrorAction SilentlyContinue)"
+  type_gap 0.3
+
+
+step "run that check"
+  input ret
+  settle 8
+
+
 step "install openssh"
   settle 2
-  input text "winget install --id Microsoft.OpenSSH.Preview --exact --source winget --accept-source-agreements --accept-package-agreements --disable-interactivity; 'WINGET_EXIT=' + $LASTEXITCODE; 'WINGET_LOW=' + ($LASTEXITCODE -band 0xFF)"
+  input text "Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0 | Select-Object -ExpandProperty RestartNeeded"
   type_gap 0.3
 
 
 step "run the install"
   input ret
-  settle 120
+  settle 180
+
+
+step "prove the server capability reports present"
+  run "Get-WindowsCapability -Online -Name OpenSSH.Server* | Select-Object -ExpandProperty State"
+  settle 6
+  type_gap 0.15
 
 
 step "sshd starts automatically"

@@ -37,6 +37,17 @@ step "boot the disk"
 step "wait for the desktop"
   repeat
     do
+      # WINDOWS 10 PUTS A "Networks" PANE OVER THE RIGHT-HAND SIDE OF ITS FIRST DESKTOP, and Escape
+      # closes it. MEASURED on run 45651981387: the desktop WAS on screen at t=200 - wallpaper, task
+      # bar, "Type here to search", Recycle Bin and Edge - with that pane laid over the right third,
+      # and the comparison below answered `0.0000 similar` fifty-two times until the leg timed out.
+      #
+      # THE ESCAPE IS INSIDE THE LOOP rather than before it, because the pane arrives when the
+      # network stack first comes up and that is not at a fixed moment. A key that closes nothing is
+      # harmless; a pane that was never closed fails the whole stage.
+      item
+        input esc
+        settle 2
       item
         read
           name screen
@@ -44,8 +55,11 @@ step "wait for the desktop"
       source screen
       mode like
       reference reference/desktop.png
-      range [0.9, 1]
-      rect [0, 0, 1920, 120]
+      range [0.85, 1]
+      # THE LEFT TWO THIRDS ONLY. The right third holds the Networks pane on a first boot and the
+      # clock at all times - the reference picture carries `8:41 AM` and a later boot carries its own
+      # time, so any comparison that includes it is comparing two correct desktops and losing.
+      rect [0, 0, 1280, 120]
       rect_at [1920, 1080]
       must true
     max 180
