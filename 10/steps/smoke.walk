@@ -36,17 +36,41 @@ step "the firmware handed control to the disk"
   from console
   timeout 300
 
-# THREE MINUTES OF RECORDING, AND NOTHING IS READ FROM IT.
+# THE DESKTOP IS THE CLAIM, AND THIS STEP USED TO MAKE A WEAKER ONE.
 #
-# THIS DELIBERATELY HAS NO SCREEN CHECK. Every guest draws a different boot sequence - a GRUB menu, a
-# kernel log, a splash, a login prompt - so any brightness or content threshold here would either be
-# tuned to one of them or be so loose it could not fail. What this walk claims is narrower and it is
-# checked above, on the console: THE FIRMWARE FOUND SOMETHING BOOTABLE AND STARTED IT.
+# IT WAS `settle 180` AND NOTHING ELSE, with a comment arguing that every guest draws a different boot
+# sequence so no screen check could be written. THAT ARGUMENT WAS RIGHT ABOUT A GENERIC THRESHOLD AND
+# WRONG ABOUT THIS REPOSITORY, which ships `reference/desktop.png` for exactly this family and uses it
+# in `ssh.walk`.
 #
-# The recording is the evidence a person watches, and three minutes is enough to see a kernel panic
-# or an immediate reboot - the two failures a console line would not show.
-step "record three minutes of the boot"
-  settle 180
+# MEASURED on run 45469938194, which this walk reported as SUCCESS: its own recording is 184 seconds
+# long and the frame at t=175 is still the TianoCore splash. THE GUEST NEVER REACHED A DESKTOP and the
+# walk could not have known, because the only thing it checked was `BdsDxe: starting` - a console line
+# the firmware prints before it has loaded anything at all.
+#
+# THE COST WAS REAL: `windows11` was published from a leg this walk blessed, and the ssh leg that
+# pulled it spent its whole budget reading `Preparing Automatic Repair` - 179 readings, all
+# 0.0000 similar. A smoke that cannot fail on a disk that does not boot is not a smoke.
+#
+# SO THE SAME PICTURE TEST `ssh.walk` USES IS USED HERE. `reference/desktop.png` is this family's own
+# desktop at 1920x1080, and `range [0.9, 1]` is what `wait for the desktop` in ssh.walk already asks.
+# The budget is 180 attempts of 5 seconds, the same fifteen minutes.
+step "the disk reaches a desktop"
+  repeat
+    do
+      item
+        read
+          name screen
+    until
+      source screen
+      mode like
+      reference reference/desktop.png
+      range [0.9, 1]
+      rect [0, 0, 1920, 120]
+      rect_at [1920, 1080]
+      must true
+    max 180
+    pause 5
 
 step "stop the machine"
   # KILL, NOT ACPI: this machine never reached userspace on purpose, and a clean shutdown would be a
