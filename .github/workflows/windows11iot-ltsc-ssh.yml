@@ -1,0 +1,56 @@
+name: windows11iot-ltsc-ssh
+
+# THE WINDOWS 11 IoT LTSC SSH STAGE: boot `windows11iot-ltsc` and prove a remote shell reaches it.
+#
+# ONE WORKFLOW FILE PER FAMILY, ZERO MATRIX - the same rule the install legs follow.
+#
+# `reference/desktop.png` IS THIS FAMILY'S OWN, which is the one thing that had to be separate. LTSC
+# draws its own taskbar, and comparing it against 11's picture would either fail on a correct desktop
+# or be loosened until it could not fail. Everything else in the walk is 11's, on purpose: see the
+# note at the top of `ltsc/steps/ssh.walk`.
+#
+# THE DISK IS 8116 MiB - the smallest of the three - because IoT LTSC ships without the consumer
+# applications. `disk_gb` covers the working copy, the compressed result and the recording, not the
+# disk's virtual size.
+
+on:
+  workflow_dispatch:
+    inputs:
+      disks_repository:
+        description: "the ghcr repository that holds the disks"
+        default: "easydev-org/easyvm-windows"
+      from_tag:
+        description: >-
+          the PUBLISHED disk this stage continues from (default windows11iot-ltsc)
+        default: "windows11iot-ltsc"
+
+concurrency:
+  group: windows11iot-ltsc-ssh
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  checks: write
+
+jobs:
+  ssh:
+    uses: easydev-org/easyvm/.github/workflows/stage.yml@v0.0.4
+    secrets: inherit
+    with:
+      image_repository: easydev-org/easyvm
+      image_tag: v0.0.4
+      disk_gb: "25"
+      group: windows11iot-ltsc-ssh
+      disks_repository: ${{ inputs.disks_repository }}
+      stages: |
+        [
+          {
+            "name": "windows11iot-ltsc-ssh",
+            "file": "ltsc/steps/ssh.walk",
+            "pull": "${{ inputs.from_tag }}",
+            "out": "windows11iot-ltsc-ssh.qcow2",
+            "publish": "windows11iot-ltsc-ssh",
+            "timeout": 70
+          }
+        ]

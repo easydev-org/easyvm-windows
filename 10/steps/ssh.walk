@@ -1,4 +1,4 @@
-walkthrough "windows 11 - ssh"
+walkthrough "windows 10 - ssh"
 resolution 1920x1080
 recording_resolution 1920x1080
 user vmuser
@@ -6,7 +6,7 @@ var boot_timeout
   default "900"
   from args.boot_timeout
 var out
-  default out/windows11-ssh.qcow2
+  default out/windows10-ssh.qcow2
   from args.out
 password admin
 var user
@@ -26,14 +26,14 @@ step "boot the disk"
     machine "q35,accel=kvm,vmport=off"
     args [["-cpu", "Skylake-Client-v4"], ["-smp", "4"], ["-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd"], ["-drive", "if=pflash,format=raw,file=OVMF_VARS.fd"], ["-m", "12288"], ["-chardev", "socket,id=qga0,path=qga.sock,server=on,wait=off"], ["-device", "virtio-serial"], ["-device", "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"], ["-device", "VGA,xres=1920,yres=1080,vgamem_mb=32"], ["-device", "qemu-xhci,id=xhci"], ["-device", "usb-tablet,bus=xhci.0"], ["-device", "usb-kbd,bus=xhci.0"], ["-drive", "file=disk.qcow2,if=none,format=qcow2,discard=unmap,id=target"], ["-device", "virtio-blk-pci,drive=target,bootindex=0"], ["-audiodev", "none,id=snd0"], ["-device", "ich9-intel-hda"], ["-device", "hda-duplex,audiodev=snd0"], ["-netdev", "tap,id=net0,ifname=qemutap0,script=no,downscript=no"], ["-device", "virtio-net-pci,netdev=net0,mac=52:54:00:56:4d:01,romfile=,host_mtu=1450"]]
     timeout 900
-# THE REFERENCE `reference/desktop.png` IS NOT IN THIS DIRECTORY YET, AND THAT IS A REAL GAP RATHER
-# THAN AN OVERSIGHT: Windows 10 draws a different taskbar and a different wallpaper from 11, so the
-# 11 file cannot be borrowed - a comparison against it would either fail on a correct desktop or be
-# loosened until it could not fail. The picture comes from the FIRST install that reaches a desktop,
-# which is what this stage's own recording is for: run the install, take the frame, commit it here.
+# THE REFERENCE PICTURE IS HERE NOW: `reference/desktop.png`, 729654 bytes, taken from this family's
+# own install recording on 2024-11-24.
 #
-# UNTIL THEN THIS STAGE CANNOT PASS, and it says so at the first step rather than after 180 rounds of
-# `0.0000 similar`. `ssh:` is the stage AFTER `install:`, so nothing is blocked by writing it now.
+# IT HAD TO BE ITS OWN. Windows 10 draws a different taskbar and a different wallpaper from 11, so the
+# 11 file could not be borrowed - a comparison against it would either fail on a correct desktop or
+# be loosened until it could not fail. The block that used to sit here said the file was missing and
+# that this stage could not pass until it existed; it exists, so the sentence is gone rather than left
+# to mislead the next reader.
 step "wait for the desktop"
   repeat
     do
