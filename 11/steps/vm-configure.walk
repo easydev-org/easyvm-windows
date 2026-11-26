@@ -219,6 +219,49 @@ step "set the computer's name"
 step "prove the new name is pending, which is all a rename can promise before a restart"
   ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
   timeout 120
+# THE RESTART IS WHERE THE RENAME TAKES EFFECT, AND IT HAS TO BE HERE.
+#
+# MEASURED on run 45777762536, which ran the rename first (the previous commit's order):
+#
+#	=== set the computer's name
+#	  ... Rename-Computer ... -> 0
+#	    WARNING: The changes will take effect after you restart the computer
+#	    RENAME_SCHEDULED
+#	=== prove the new name is pending ...
+#	    HOSTNAME_PENDING_OK
+#	=== set the locale to American English
+#	  ... Set-WinSystemLocale ... -> 0
+#	    (NO OUTPUT)                    <- LOCALE_WRITTEN never printed
+#	  ssh: wait: remote command exited without exit status or exit signal
+#
+# THE TWO SETTINGS BREAK EACH OTHER IN BOTH ORDERS, and the measurements say so:
+#
+#	locale -> rename   Rename-Computer exits 1, with nothing on stdout  (run 45775360061)
+#	rename -> locale   the rename is PENDING, and the locale change tears the session down
+#	                   before its own echo line is written              (run 45777762536)
+#
+# A PENDING RENAME IS THE COMMON TERM: the machine is mid-reconfiguration, and anything that rebuilds
+# the language services in that state fails. THE RENAME IS ONLY PENDING UNTIL A RESTART, so the
+# restart that this file already performs for the driver's port is moved here - after the rename,
+# before the setters - and the rename is committed instead of pending.
+step "restart, so the new name is applied before anything else reconfigures"
+  ssh "shutdown /r /t 0 /f"
+  timeout 120
+
+
+step "wait for sshd on the renamed machine"
+  repeat
+    until machine_ssh
+    max 90
+    pause 10
+
+
+step "prove the name is live, not pending"
+  ssh "powershell -NoProfile -Command \"Write-Output ('name = ' + $env:COMPUTERNAME); if ($env:COMPUTERNAME -ieq '{{ hostname }}') { Write-Output 'HOSTNAME_LIVE_OK' } else { Write-Output 'HOSTNAME_NOT_LIVE'; exit 1 }\""
+  timeout 120
+
+
+
 
 
 
