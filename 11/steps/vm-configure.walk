@@ -183,6 +183,46 @@ step "prove the guest agent answers"
   timeout 120
 
 
+# THE RENAME COMES BEFORE THE LOCALE AND THE TIME ZONE, AND THAT ORDER IS MEASURED TOO.
+#
+# MEASURED on run 45775360061, the first run that set the locale first (the previous commit's order):
+#
+#	=== set the locale to American English
+#	    LOCALE_WRITTEN
+#	=== wait for sshd after the language change dropped it
+#	  machine_ssh: ssh_ready="true"
+#	=== prove the locale
+#	    culture = en-US  /  ui = en-US
+#	=== set the time zone to Pacific  /  prove the time zone
+#	    zone = Pacific Standard Time
+#	=== set the computer's name
+#	  ssh: powershell ... Rename-Computer ... -> 1        <- FAILED, NO OUTPUT
+#
+# `Set-WinSystemLocale` reconfigures the language services, and `Rename-Computer` stopped working in
+# the machine that had just had them rebuilt - exit 1 with nothing on stdout. THE SAME COMMAND HAD
+# SUCCEEDED IN run 45771601806, where the rename ran BEFORE the locale (`WARNING: The changes will
+# take effect after you restart` / `RENAME_SCHEDULED`). So the rename goes first, and the two setters
+# follow it, each with the `settle + machine_ssh` wait that THIS run proved catches the dropped
+# session:
+#
+#	=== wait for sshd after the language change dropped it
+#	  machine_ssh: ssh_ready="true" present=true
+#	  repeat: satisfied after 1 attempt(s)
+#
+# THE SETTERS NO LONGER NEED TO BE BEFORE THE RENAME, because the drop is handled where it happens.
+# That was the reason for the previous order and this run retired it.
+step "set the computer's name"
+  ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
+  timeout 300
+
+
+step "prove the new name is pending, which is all a rename can promise before a restart"
+  ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
+  timeout 120
+
+
+
+
 # THE TIME ZONE IS SET BEFORE THE RENAME, NOT AFTER IT.
 #
 # MEASURED on run 45771601806, step 16 of 30:
@@ -250,18 +290,6 @@ step "wait for sshd after the time-zone change dropped it"
 step "prove the time zone"
   ssh "powershell -NoProfile -Command \"Write-Output ('zone = ' + (Get-TimeZone).Id); Write-Output ('now  = ' + (Get-Date -Format o)); if ((Get-TimeZone).Id -eq 'Pacific Standard Time') { Write-Output 'TIMEZONE_OK' } else { Write-Output 'TIMEZONE_WRONG'; exit 1 }\""
   timeout 60
-
-
-step "set the computer's name"
-  ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
-  timeout 300
-
-
-step "prove the new name is pending, which is all a rename can promise before a restart"
-  ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
-  timeout 120
-
-
 step "prove the guest can fetch from the host share"
   ssh "powershell -NoProfile -Command \"Invoke-WebRequest -UseBasicParsing -TimeoutSec 20 'http://172.30.0.1:8080/shared/'\""
   timeout 180
