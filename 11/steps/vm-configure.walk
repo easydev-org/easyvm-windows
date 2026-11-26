@@ -183,13 +183,30 @@ step "prove the guest agent answers"
   timeout 120
 
 
-step "set the computer's name"
-  ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
+# THE TIME ZONE IS SET BEFORE THE RENAME, NOT AFTER IT.
+#
+# MEASURED on run 45771601806, step 16 of 30:
+#
+#	=== set the time zone to Pacific
+#	  ssh: powershell ... Set-TimeZone -Id 'Pacific Standard Time' ... -> 0
+#	  ssh: wait: remote command exited without exit status or exit signal
+#
+# THE EXIT STATUS WAS 0 - the command ran and succeeded - and the failure came from the CONNECTION,
+# which was reset while the shell was still waiting for its status line. The step before it had just
+# run `Rename-Computer`, which leaves Windows with a pending rename that the next boot applies; in
+# that state a time-zone change reconfigures the clock service and the ssh session is dropped
+# underneath the command that asked for it.
+#
+# NOTHING LINKS THE TWO, so the order is free: a hostname and a time zone do not depend on each
+# other. Doing the time zone first means the rename is the LAST thing that happens before the
+# shutdown this file already schedules, which is exactly where a pending rename belongs.
+step "set the locale to American English"
+  ssh "powershell -NoProfile -Command \"Set-WinUILanguageOverride -Language 'en-US'; Set-Culture -CultureInfo 'en-US'; Set-WinSystemLocale -SystemLocale 'en-US'; Write-Output LOCALE_WRITTEN\""
   timeout 300
 
 
-step "prove the new name is pending, which is all a rename can promise before a restart"
-  ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
+step "prove the locale"
+  ssh "powershell -NoProfile -Command \"Write-Output ('culture = ' + (Get-Culture).Name); Write-Output ('ui      = ' + (Get-WinUILanguageOverride).Name); if ((Get-Culture).Name -eq 'en-US') { Write-Output 'LOCALE_OK' } else { Write-Output 'LOCALE_WRONG'; exit 1 }\""
   timeout 120
 
 
@@ -203,13 +220,13 @@ step "prove the time zone"
   timeout 60
 
 
-step "set the locale to American English"
-  ssh "powershell -NoProfile -Command \"Set-WinUILanguageOverride -Language 'en-US'; Set-Culture -CultureInfo 'en-US'; Set-WinSystemLocale -SystemLocale 'en-US'; Write-Output LOCALE_WRITTEN\""
+step "set the computer's name"
+  ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
   timeout 300
 
 
-step "prove the locale"
-  ssh "powershell -NoProfile -Command \"Write-Output ('culture = ' + (Get-Culture).Name); Write-Output ('ui      = ' + (Get-WinUILanguageOverride).Name); if ((Get-Culture).Name -eq 'en-US') { Write-Output 'LOCALE_OK' } else { Write-Output 'LOCALE_WRONG'; exit 1 }\""
+step "prove the new name is pending, which is all a rename can promise before a restart"
+  ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
   timeout 120
 
 
