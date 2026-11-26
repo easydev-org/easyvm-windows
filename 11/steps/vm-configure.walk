@@ -244,16 +244,31 @@ step "prove the new name is pending, which is all a rename can promise before a 
 # the language services in that state fails. THE RENAME IS ONLY PENDING UNTIL A RESTART, so the
 # restart that this file already performs for the driver's port is moved here - after the rename,
 # before the setters - and the rename is committed instead of pending.
-step "restart, so the new name is applied before anything else reconfigures"
-  ssh "shutdown /r /t 0 /f"
-  timeout 120
-
-
-step "wait for sshd on the renamed machine"
+# NO `shutdown` HERE: `Rename-Computer` ON THIS GUEST IS ALREADY RESTARTING IT.
+#
+# MEASURED on run 45780063789:
+#
+#	=== set the computer's name
+#	  ... Rename-Computer ... -> 0 / RENAME_SCHEDULED
+#	=== prove the new name is pending ...
+#	    pending = EASYVM-WIN11 / live = SANDBOX / HOSTNAME_PENDING_OK
+#	=== restart, so the new name is applied before anything else reconfigures
+#	  ssh: shutdown /r /t 0 /f -> 1115
+#	    A system shutdown is in progress.(1115)
+#
+# 1115 IS `ERROR_SHUTDOWN_IN_PROGRESS`. The machine was ALREADY shutting down, so the command that
+# asked for a reboot was refused - and the failure was reported against the reboot that had in fact
+# begun. The next probe confirms it: `ssh: handshake failed: ... connection reset by peer`.
+#
+# SO THIS STEP ONLY WAITS. The restart is a fact of the rename on Windows 11; asking for a second one
+# is what failed.
+step "wait for the restart the rename already started"
+  settle 20
   repeat
     until machine_ssh
     max 90
     pause 10
+
 
 
 step "prove the name is live, not pending"
@@ -266,23 +281,20 @@ step "prove the name is live, not pending"
 
 
 
-# THE TIME ZONE IS SET BEFORE THE RENAME, NOT AFTER IT.
+# A TIME-ZONE CHANGE DROPS THE SESSION TOO, FOR THE SAME REASON THE LOCALE DOES - and both are now
+# reached only AFTER the rename has been applied by a restart.
 #
-# MEASURED on run 45771601806, step 16 of 30:
+# MEASURED on run 45771601806, when this ran straight after `Rename-Computer`:
 #
 #	=== set the time zone to Pacific
 #	  ssh: powershell ... Set-TimeZone -Id 'Pacific Standard Time' ... -> 0
 #	  ssh: wait: remote command exited without exit status or exit signal
 #
 # THE EXIT STATUS WAS 0 - the command ran and succeeded - and the failure came from the CONNECTION,
-# which was reset while the shell was still waiting for its status line. The step before it had just
-# run `Rename-Computer`, which leaves Windows with a pending rename that the next boot applies; in
-# that state a time-zone change reconfigures the clock service and the ssh session is dropped
-# underneath the command that asked for it.
+# reset while the shell was still waiting for its status line. THAT WAS A PENDING RENAME, and the
+# answer was not a different order (both orders were measured and both failed, see the notes on the
+# rename above) but the restart that makes the rename stop being pending.
 #
-# NOTHING LINKS THE TWO, so the order is free: a hostname and a time zone do not depend on each
-# other. Doing the time zone first means the rename is the LAST thing that happens before the
-# shutdown this file already schedules, which is exactly where a pending rename belongs.
 step "set the locale to American English"
   ssh "powershell -NoProfile -Command \"Set-WinUILanguageOverride -Language 'en-US'; Set-Culture -CultureInfo 'en-US'; Set-WinSystemLocale -SystemLocale 'en-US'; Write-Output LOCALE_WRITTEN\""
   timeout 300
