@@ -178,9 +178,30 @@ step "wait for sshd to come back on the new boot"
 # present, service up - and if it does not, the failure names the agent rather than a device class.
 
 
+# THE AGENT COMES BACK A LITTLE AFTER SSHD DOES, SO THE PING IS RETRIED.
+#
+# MEASURED on run 45783475583, step 13 of 33:
+#
+#	=== wait for sshd to come back on the new boot
+#	  machine_ssh: ssh_ready="true" present=true
+#	  repeat: satisfied after 1 attempt(s)
+#	=== prove the guest agent answers
+#	  error: `qga: ping`: the agent at .../qga.sock does not answer `guest-ping`:
+#	         read unix @->qga.sock: i/o timeout. The socket is open on the host side, so this is
+#	         the GUEST's agent
+#
+# THE SAME MACHINE ANSWERED `qga: ping ok` ON THE PREVIOUS RUN (45781969105). Neither the driver nor
+# the MSI differed: `PNPUTIL_EXIT=0`, `SCAN_EXIT=0`, `MSIEXEC_EXIT=0` in both. What differed is TIME -
+# `machine_ssh` became true one attempt after the restart, and the daemon's socket exists from the
+# moment qemu starts it, so a single ping can land while Windows is still starting the agent service.
+#
+# SO THE PING IS ASKED UNTIL IT ANSWERS, which is what the wait above already does for sshd. A qga
+# channel that never opens still fails, just 40 attempts later than before.
 step "prove the guest agent answers"
-  qga ping
-  timeout 120
+  repeat
+    until machine_qga
+    max 40
+    pause 10
 
 
 # THE RENAME COMES BEFORE THE LOCALE AND THE TIME ZONE, AND THAT ORDER IS MEASURED TOO.
