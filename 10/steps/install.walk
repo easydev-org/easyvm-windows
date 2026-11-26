@@ -43,6 +43,40 @@ step "wait for the firmware to offer the DVD"
   timeout 180
 
 
+# FIVE RETURNS AT ONCE, BEFORE ANY SCREEN READ, BECAUSE THE PROMPT'S WINDOW IS FIVE SECONDS.
+#
+# MEASURED on run 45744262738 (ltsc, the same acceptance stage this family shares): the recording sits on
+#
+#	BdsDxe: No bootable option or device was found.
+#	BdsDxe: Press any key to enter the Boot Manager Menu.
+#	        Press any key to boot from CD or DVD......
+#
+# from t=900s to the end of a 130-minute budget. The DVD WAS offered - `DVD-ROM` reached the console - and
+# by the time the exit loop below pressed its first Return the five-second window had closed.
+#
+# THE EXIT LOOP CANNOT WIN THIS RACE: each of its turns is one Return plus a full-frame OCR read, which is
+# seconds, and the prompt does not wait. Five presses cost five tenths of a second.
+step "press a key, one of five, inside the prompt's five-second window"
+  input ret
+  settle 1
+
+step "press a key, two of five"
+  input ret
+  settle 1
+
+step "press a key, three of five"
+  input ret
+  settle 1
+
+step "press a key, four of five"
+  input ret
+  settle 1
+
+step "press a key, five of five"
+  input ret
+  settle 1
+
+
 # RETURN, NOT ESCAPE, AND THE DIFFERENCE IS MEASURED ON THE RECORDING ITSELF.
 #
 # These three presses exist for the firmware's own "Press any key to boot from CD or DVD" line, where
