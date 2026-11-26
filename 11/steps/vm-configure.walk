@@ -205,6 +205,30 @@ step "set the locale to American English"
   timeout 300
 
 
+# `Set-WinSystemLocale` RECONFIGURES THE LANGUAGE SERVICES, AND THAT DROPS THE SESSION IT WAS ASKED IN.
+#
+# MEASURED on run 45773249906, step 15 of 30 - the run that first reordered the setters to before the
+# rename, which was necessary and not sufficient:
+#
+#	=== set the locale to American English
+#	  ssh: powershell ... Set-WinSystemLocale ... -> 0
+#	    LOCALE_WRITTEN
+#	=== prove the locale
+#	  ssh: ... -> 0
+#	  ssh: wait: remote command exited without exit status or exit signal
+#
+# BOTH COMMANDS RETURNED 0. The setter wrote the value and returned; the machine then tore down the
+# session underneath the shell that asked, so the NEXT step - a fresh dial - landed in the gap. Order
+# cannot fix an asynchronous teardown; a wait can. sshd is back within seconds on this guest, and
+# `machine_ssh` is the daemon's own probe of exactly that.
+step "wait for sshd after the language change dropped it"
+  settle 15
+  repeat
+    until machine_ssh
+    max 60
+    pause 5
+
+
 step "prove the locale"
   ssh "powershell -NoProfile -Command \"Write-Output ('culture = ' + (Get-Culture).Name); Write-Output ('ui      = ' + (Get-WinUILanguageOverride).Name); if ((Get-Culture).Name -eq 'en-US') { Write-Output 'LOCALE_OK' } else { Write-Output 'LOCALE_WRONG'; exit 1 }\""
   timeout 120
@@ -213,6 +237,14 @@ step "prove the locale"
 step "set the time zone to Pacific"
   ssh "powershell -NoProfile -Command \"Set-TimeZone -Id 'Pacific Standard Time' -ErrorAction Stop; Write-Output (Get-TimeZone | Select-Object -ExpandProperty Id)\""
   timeout 120
+
+
+step "wait for sshd after the time-zone change dropped it"
+  settle 15
+  repeat
+    until machine_ssh
+    max 60
+    pause 5
 
 
 step "prove the time zone"
