@@ -211,57 +211,27 @@ step "prove the guest agent answers"
 #
 # THE SETTERS NO LONGER NEED TO BE BEFORE THE RENAME, because the drop is handled where it happens.
 # That was the reason for the previous order and this run retired it.
+# THERE IS NO "prove the rename is pending" STEP ANY MORE, AND ITS ABSENCE IS THE FIX.
+#
+# MEASURED on run 45781969105, step 15 of 34:
+#
+#	=== prove the new name is pending ...
+#	  ssh: powershell ... -> 0
+#	    pending = EASYVM-WIN11
+#	    live    = SANDBOX
+#	  abort: ssh session: unexpected packet in response to channel open
+#
+# The command RAN and printed two of its three lines; the third never arrived because
+# `Rename-Computer` had already begun restarting the machine. Run 45780063789 shows the same thing from
+# the other side - its `shutdown /r` was refused with 1115, `ERROR_SHUTDOWN_IN_PROGRESS`.
+#
+# SO "PENDING" IS A STATE THIS GUEST BARELY SPENDS TIME IN. A step that tries to observe it is racing
+# the restart it is meant to precede, and when it loses, the failure reads as a broken ssh session
+# rather than as a race. The restart step below already waits for the machine to come back, and the
+# step after it proves the name is LIVE, which is the fact that matters.
 step "set the computer's name"
   ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
   timeout 300
-
-
-step "prove the new name is pending, which is all a rename can promise before a restart"
-  ssh "powershell -NoProfile -Command \"$pending = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName').ComputerName; Write-Output ('pending = ' + $pending); Write-Output ('live    = ' + $env:COMPUTERNAME); if ($pending -eq '{{ hostname }}') { Write-Output 'HOSTNAME_PENDING_OK' } else { Write-Output 'HOSTNAME_NOT_SET'; exit 1 }\""
-  timeout 120
-# THE RESTART IS WHERE THE RENAME TAKES EFFECT, AND IT HAS TO BE HERE.
-#
-# MEASURED on run 45777762536, which ran the rename first (the previous commit's order):
-#
-#	=== set the computer's name
-#	  ... Rename-Computer ... -> 0
-#	    WARNING: The changes will take effect after you restart the computer
-#	    RENAME_SCHEDULED
-#	=== prove the new name is pending ...
-#	    HOSTNAME_PENDING_OK
-#	=== set the locale to American English
-#	  ... Set-WinSystemLocale ... -> 0
-#	    (NO OUTPUT)                    <- LOCALE_WRITTEN never printed
-#	  ssh: wait: remote command exited without exit status or exit signal
-#
-# THE TWO SETTINGS BREAK EACH OTHER IN BOTH ORDERS, and the measurements say so:
-#
-#	locale -> rename   Rename-Computer exits 1, with nothing on stdout  (run 45775360061)
-#	rename -> locale   the rename is PENDING, and the locale change tears the session down
-#	                   before its own echo line is written              (run 45777762536)
-#
-# A PENDING RENAME IS THE COMMON TERM: the machine is mid-reconfiguration, and anything that rebuilds
-# the language services in that state fails. THE RENAME IS ONLY PENDING UNTIL A RESTART, so the
-# restart that this file already performs for the driver's port is moved here - after the rename,
-# before the setters - and the rename is committed instead of pending.
-# NO `shutdown` HERE: `Rename-Computer` ON THIS GUEST IS ALREADY RESTARTING IT.
-#
-# MEASURED on run 45780063789:
-#
-#	=== set the computer's name
-#	  ... Rename-Computer ... -> 0 / RENAME_SCHEDULED
-#	=== prove the new name is pending ...
-#	    pending = EASYVM-WIN11 / live = SANDBOX / HOSTNAME_PENDING_OK
-#	=== restart, so the new name is applied before anything else reconfigures
-#	  ssh: shutdown /r /t 0 /f -> 1115
-#	    A system shutdown is in progress.(1115)
-#
-# 1115 IS `ERROR_SHUTDOWN_IN_PROGRESS`. The machine was ALREADY shutting down, so the command that
-# asked for a reboot was refused - and the failure was reported against the reboot that had in fact
-# begun. The next probe confirms it: `ssh: handshake failed: ... connection reset by peer`.
-#
-# SO THIS STEP ONLY WAITS. The restart is a fact of the rename on Windows 11; asking for a second one
-# is what failed.
 step "wait for the restart the rename already started"
   settle 20
   repeat
