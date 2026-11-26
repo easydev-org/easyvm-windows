@@ -69,22 +69,22 @@ step "wait for sshd"
 
 
 step "copy the driver in"
-  copy vioserial/vioser.inf "C:/Users/{{ user }}/vioser.inf"
+  scp vioserial/vioser.inf "C:/Users/{{ user }}/vioser.inf"
   timeout 300
 
 
 step "copy the driver's payload in"
-  copy vioserial/vioser.sys "C:/Users/{{ user }}/vioser.sys"
+  scp vioserial/vioser.sys "C:/Users/{{ user }}/vioser.sys"
   timeout 300
 
 
 step "copy the driver's catalogue in"
-  copy vioserial/vioser.cat "C:/Users/{{ user }}/vioser.cat"
+  scp vioserial/vioser.cat "C:/Users/{{ user }}/vioser.cat"
   timeout 300
 
 
 step "copy the agent installer in"
-  copy qemu-ga-x86_64.msi "C:/Users/{{ user }}/qemu-ga-x86_64.msi"
+  scp qemu-ga-x86_64.msi "C:/Users/{{ user }}/qemu-ga-x86_64.msi"
   timeout 600
 # THE DRIVER IS INSTALLED *INTO THE DRIVER STORE*, WHICH IS NOT THE SAME AS BINDING IT TO A DEVICE.
 #
@@ -224,14 +224,14 @@ step "show what the guest sees at the share"
 
 
 step "copy the launcher in"
-  copy
+  scp
     template launcher
     to "C:/Users/{{ user }}/bootstrap-launcher.ps1"
   timeout 300
 
 
 step "copy the task registration script in"
-  copy
+  scp
     template windows_task
     to "C:/Users/{{ user }}/bootstrap-install.ps1"
   timeout 300

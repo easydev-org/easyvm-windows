@@ -42,7 +42,7 @@ step "wait for sshd"
 
 
 step "copy wait-winget.ps1 in"
-  copy wait-winget.ps1 "C:/Users/{{ user }}/wait-winget.ps1"
+  scp wait-winget.ps1 "C:/Users/{{ user }}/wait-winget.ps1"
   timeout 300
 
 
@@ -52,7 +52,7 @@ step "wait for winget to have an index"
 
 
 step "copy install-buildtools.ps1 in"
-  copy install-buildtools.ps1 "C:/Users/{{ user }}/install-buildtools.ps1"
+  scp install-buildtools.ps1 "C:/Users/{{ user }}/install-buildtools.ps1"
   timeout 300
 
 
@@ -62,7 +62,7 @@ step "install the build tools"
 
 
 step "copy install-the-windows-sdk.ps1 in"
-  copy install-the-windows-sdk.ps1 "C:/Users/{{ user }}/install-the-windows-sdk.ps1"
+  scp install-the-windows-sdk.ps1 "C:/Users/{{ user }}/install-the-windows-sdk.ps1"
   timeout 300
 
 
@@ -72,7 +72,7 @@ step "install the windows sdk"
 
 
 step "copy install-the-dotnet-sdk.ps1 in"
-  copy install-the-dotnet-sdk.ps1 "C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"
+  scp install-the-dotnet-sdk.ps1 "C:/Users/{{ user }}/install-the-dotnet-sdk.ps1"
   timeout 300
 
 
@@ -82,7 +82,7 @@ step "install the dotnet sdk"
 
 
 step "copy install-powershell-7.ps1 in"
-  copy install-powershell-7.ps1 "C:/Users/{{ user }}/install-powershell-7.ps1"
+  scp install-powershell-7.ps1 "C:/Users/{{ user }}/install-powershell-7.ps1"
   timeout 300
 
 
@@ -92,7 +92,7 @@ step "install powershell 7"
 
 
 step "copy install-python.ps1 in"
-  copy install-python.ps1 "C:/Users/{{ user }}/install-python.ps1"
+  scp install-python.ps1 "C:/Users/{{ user }}/install-python.ps1"
   timeout 300
 
 
@@ -102,7 +102,7 @@ step "install python"
 
 
 step "copy install-node.ps1 in"
-  copy install-node.ps1 "C:/Users/{{ user }}/install-node.ps1"
+  scp install-node.ps1 "C:/Users/{{ user }}/install-node.ps1"
   timeout 300
 
 
@@ -112,7 +112,7 @@ step "install node"
 
 
 step "copy install-git.ps1 in"
-  copy install-git.ps1 "C:/Users/{{ user }}/install-git.ps1"
+  scp install-git.ps1 "C:/Users/{{ user }}/install-git.ps1"
   timeout 300
 
 
@@ -187,7 +187,7 @@ step "let the machine finish coming up"
 
 
 step "copy msvc-check.ps1 in"
-  copy msvc-check.ps1 "C:/Users/{{ user }}/msvc-check.ps1"
+  scp msvc-check.ps1 "C:/Users/{{ user }}/msvc-check.ps1"
   timeout 300
 
 
@@ -197,7 +197,7 @@ step "build and run a C program"
 
 
 step "copy dotnet-check.ps1 in"
-  copy dotnet-check.ps1 "C:/Users/{{ user }}/dotnet-check.ps1"
+  scp dotnet-check.ps1 "C:/Users/{{ user }}/dotnet-check.ps1"
   timeout 300
 
 
@@ -239,7 +239,7 @@ step "prove the windows sdk"
 
 
 step "copy prove-python-node-git.ps1 in"
-  copy prove-python-node-git.ps1 "C:/Users/{{ user }}/prove-python-node-git.ps1"
+  scp prove-python-node-git.ps1 "C:/Users/{{ user }}/prove-python-node-git.ps1"
   timeout 300
 
 
