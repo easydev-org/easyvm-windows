@@ -11,7 +11,7 @@ var computer_name
 var out
   default out/windows11.qcow2
   from args.out
-password admin
+password admin1
 var user
   default vmuser
   from args.user

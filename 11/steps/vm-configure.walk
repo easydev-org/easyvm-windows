@@ -14,7 +14,7 @@ var locale
 var out
   default out/distro.qcow2
   from args.out
-password admin
+password admin1
 var smb_pass
   default ""
   from args.smb_pass

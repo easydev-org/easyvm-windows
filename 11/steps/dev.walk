@@ -5,7 +5,7 @@ user vmuser
 var out
   default out/distro.qcow2
   from args.out
-password admin
+password admin1
 var user
   default vmuser
   from args.user

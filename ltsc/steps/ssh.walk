@@ -20,7 +20,7 @@ var boot_timeout
 var out
   default out/windows11iot-ltsc-ssh.qcow2
   from args.out
-password admin
+password admin1
 var user
   default vmuser
   from args.user

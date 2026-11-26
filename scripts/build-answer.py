@@ -53,7 +53,7 @@ import tempfile
 # from the ISO being installed - `scripts/wim-editions.py` - and passed in as `--index` or `--want`.
 IDENTITY = {
     "__ADMIN_USER__": "vmuser",
-    "__ADMIN_PASSWORD__": "admin",
+    "__ADMIN_PASSWORD__": "admin1",
     "__COMPUTER_NAME__": "sandbox",
 }
 
