@@ -253,8 +253,33 @@ step "prove the guest agent answers"
 step "set the computer's name"
   ssh "powershell -NoProfile -Command \"Rename-Computer -NewName '{{ hostname }}' -Force -ErrorAction Stop; Write-Output RENAME_SCHEDULED\""
   timeout 300
-step "wait for the restart the rename already started"
-  settle 20
+# THE WAIT HAS TO SEE THE OLD sshd GO FIRST, OR IT PASSES BEFORE THE RESTART EVEN STARTS.
+#
+# MEASURED on run 45785344190, steps 15-16:
+#
+#	=== wait for the restart the rename already started
+#	  machine_ssh: ssh_ready="true" present=true
+#	  repeat: satisfied after 1 attempt(s)          <- ONE attempt, twenty seconds after the rename
+#	=== prove the name is live, not pending
+#	    name = SANDBOX
+#	    HOSTNAME_NOT_LIVE
+#
+# THE MACHINE HAD NOT REBOOTED. `machine_ssh` asks whether sshd accepts a connection, and the OLD sshd
+# was still there answering - so a loop that only waits for TRUE finished immediately, and the check
+# after it found the old name. A restart is TWO facts in order: the old daemon stops, then a new one
+# starts.
+#
+# THE FIRST HALF IS A PAUSE, NOT `wait_until stopped`. `machine_stopped` means THE QEMU PROCESS HAS
+# GONE, and a guest-initiated restart never does that - qemu stays up and the guest reboots inside it.
+# A wait on `stopped` here would spend its whole budget waiting for an event that cannot happen.
+#
+# Twenty seconds is what the pending-rename window has measured at: the machine is unreachable for the
+# rebooting interval and answers again afterwards, and the loop below then waits as long as it needs.
+step "give the guest time to go down before waiting for it to come back"
+  settle 45
+
+
+step "wait for the machine to answer again"
   repeat
     until machine_ssh
     max 90
