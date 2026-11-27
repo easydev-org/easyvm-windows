@@ -30,7 +30,7 @@ re-produce it cannot start from the artifact the stage before it published.
 THE FILES THAT GO ON THE CD
 
   Autounattend.xml                    the rendered answer file, LF line endings
-  $WinPEDriver$/<driver>/<files>      viostor, vioscsi, NetKVM, Balloon
+  $WinPEDriver$/<driver>/<files>      viostor, vioscsi, NetKVM, Balloon, viogpu
 
 `viostor` IS NOT OPTIONAL: without it windowsPE cannot see the virtio disk and Setup stops at a
 dialog nobody clicks. That is why no drivers is an error here rather than a smaller ISO.
@@ -219,7 +219,16 @@ def list_members(medium):
 WINPE_DIR = "$WinPEDriver$"
 
 # drivers windowsPE must load before it can install anything, and the release trees they live under.
-DRIVERS = ["viostor", "vioscsi", "NetKVM", "Balloon"]
+#
+# `viogpu` IS THE ONE THAT MAKES `virtio-vga` A DISPLAY RATHER THAN A BLACK SCREEN. Every walk in this
+# family was booted with `-device VGA,xres=...,vgamem_mb=32` - QEMU's stdvga - and the guest drove it
+# through the driver Windows ships for it. `virtio-vga` has no in-box driver at all: without this one
+# the guest sees a device it cannot use, and the frames every step reads are blank.
+#
+# The ISO carries it as `viogpu` (the WDDM `viogpudo`), and the drivers resolve exactly like the other
+# four - `$WinPEDriver$/viogpu/<release>/amd64/...` - so adding the name here is the whole change on the
+# windowsPE side.
+DRIVERS = ["viostor", "vioscsi", "NetKVM", "Balloon", "viogpu"]
 
 # THE RELEASE TREE IS A FACT ABOUT THE GUEST, NOT A UNIVERSAL PREFERENCE, AND THIS LIST USED TO BE ONE
 # ORDER FOR EVERY FAMILY: `w11` first, always. That is why windows11 installed and the other three did
