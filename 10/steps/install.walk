@@ -319,7 +319,28 @@ step "take the medium's boot prompt, whenever it appears"
     pause 1
 
 
+# THE PREVIOUS STEP ALREADY SAW `Windows Setup`; THIS ONE READ `» fl =` FROM THE SAME WINDOW.
+#
+# MEASURED on run 45971388598 with the recording beside it. At t=180s the frame is Windows Setup's
+# "Installing Windows" page, complete with the progress bar and the step list. The read in this step,
+# at the same moment, returned THREE characters:
+#
+#	see: 3 word(s): » fl =
+#	[until]: __until__ = false (none of "Windows" or "Setup" in "» fl =")
+#
+# and t=300s is a BLACK SCREEN (the reboot after "Installing updates"), t=600s is the finished desktop.
+# So the window this step waits for is real and short, and OCR DID NOT DECODE ITS TEXT on this
+# framebuffer - the words were there and unreadable.
+#
+# THE STEP IS THEREFORE OPTIONAL. What it guards - that Setup started - is already established by the
+# step before it, `take the medium's boot prompt`, whose own word list contains `[Windows, Setup]` and
+# whose gate passed. Re-asking the same question through OCR, on a screen OCR cannot decode, turns a
+# working install into a failure.
+#
+# `optional true` KEEPS THE READ IN THE LOG: a reader still sees what the screen said, and a real
+# failure is still caught by `wait for the desktop` at the end, which is the claim that matters.
 step "Setup is on screen"
+  optional true
   repeat
     do
       item
@@ -334,7 +355,7 @@ step "Setup is on screen"
       rect [0, 0, 1920, 1080]
       rect_at [1920, 1080]
       words [Windows, Setup]
-    max 180
+    max 60
 # NINETY MINUTES WAS NOT ENOUGH ON A GITHUB RUNNER, AND THE FRAME SAYS WHY.
 #
 # MEASURED ON RUN 44377939172, which spent its whole 1h30m and failed:
