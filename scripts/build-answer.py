@@ -220,15 +220,20 @@ WINPE_DIR = "$WinPEDriver$"
 
 # drivers windowsPE must load before it can install anything, and the release trees they live under.
 #
-# `viogpu` IS THE ONE THAT MAKES `virtio-vga` A DISPLAY RATHER THAN A BLACK SCREEN. Every walk in this
+# `viogpudo` IS THE ONE THAT MAKES `virtio-vga` A DISPLAY RATHER THAN A BLACK SCREEN. Every walk in this
 # family was booted with `-device VGA,xres=...,vgamem_mb=32` - QEMU's stdvga - and the guest drove it
 # through the driver Windows ships for it. `virtio-vga` has no in-box driver at all: without this one
 # the guest sees a device it cannot use, and the frames every step reads are blank.
 #
-# The ISO carries it as `viogpu` (the WDDM `viogpudo`), and the drivers resolve exactly like the other
-# four - `$WinPEDriver$/viogpu/<release>/amd64/...` - so adding the name here is the whole change on the
-# windowsPE side.
-DRIVERS = ["viostor", "vioscsi", "NetKVM", "Balloon", "viogpu"]
+# THE DIRECTORY IS CALLED `viogpudo`, NOT `viogpu`, AND THAT EXACT NAME IS WHAT MATTERS. The extractor
+# matches `"<driver>/<release>/amd64"` against the ISO's own listing, so a near-miss SKIPS THE DRIVER IN
+# SILENCE - which is what the first attempt at this did: the published `answer-windows11` still carried
+# only Balloon, NetKVM, vioscsi and viostor, and `7z l` of that CD proved it.
+#
+# MEASURED from the pinned virtio-win ISO: the tree is `viogpudo/{w8,w8.1,w10,w11,2k16,2k19,2k22,2k25}
+# /amd64/viogpudo.inf`, so it resolves exactly like the other four as
+# `$WinPEDriver$/viogpudo/<release>/amd64/...`.
+DRIVERS = ["viostor", "vioscsi", "NetKVM", "Balloon", "viogpudo"]
 
 # THE RELEASE TREE IS A FACT ABOUT THE GUEST, NOT A UNIVERSAL PREFERENCE, AND THIS LIST USED TO BE ONE
 # ORDER FOR EVERY FAMILY: `w11` first, always. That is why windows11 installed and the other three did
